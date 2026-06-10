@@ -45,6 +45,14 @@ features tailored to the needs of the infosec and bug bounty community.
   secrets (LinkFinder/SecretFinder-style)
 - **JWT editor** — re-sign edited claims, forge `alg:none`, HS/RS key confusion,
   and weak-secret brute force
+- **Parameter discovery** — Param Miner-style hidden-parameter brute forcing
+  (query/body/header) with reflection and behavior-change detection
+- **GraphQL tooling** — introspection, schema browsing, and generated query
+  skeletons
+- **Request smuggling probe** — timing-based CL.TE / TE.CL desync detection
+- **WebSocket interception** — the proxy parses and logs WS frames; history is
+  browsable in the dashboard
+- **Findings export** — scanner issues as a standalone HTML or Markdown report
 - **Extension ecosystem** — JavaScript extensions with request/response hooks
   and custom active/passive scan checks
 - **Out-of-band (OOB) collaborator** for blind vulnerability detection, over
@@ -68,6 +76,11 @@ GraphQL endpoint:
 | Comparer | `POST /api/comparer` |
 | Sequencer | `POST /api/sequencer` |
 | Match & Replace | `GET/PUT /api/rules` |
+| Findings export | `GET /api/scanner/report?format=html\|md` |
+| Parameter discovery | `POST /api/paramminer` |
+| GraphQL | `POST /api/gql/introspect` |
+| Request smuggling | `POST /api/smuggle` |
+| WebSocket history | `GET /api/websocket/connections`, `GET /api/websocket/messages`, `DELETE /api/websocket` |
 | Authorization tester | `POST /api/authz/analyze` |
 | Auth profiles | `GET/PUT /api/session/profiles`, `DELETE /api/session/profiles?name=…` |
 | Content discovery | `POST /api/discovery` |

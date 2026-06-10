@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"time"
 	"unicode/utf8"
 
 	"github.com/gorilla/mux"
@@ -18,13 +19,16 @@ import (
 	"github.com/dstotijn/hetty/pkg/discovery"
 	"github.com/dstotijn/hetty/pkg/ext"
 	"github.com/dstotijn/hetty/pkg/intruder"
+	"github.com/dstotijn/hetty/pkg/paramminer"
 	"github.com/dstotijn/hetty/pkg/proj"
+	"github.com/dstotijn/hetty/pkg/report"
 	"github.com/dstotijn/hetty/pkg/rules"
 	"github.com/dstotijn/hetty/pkg/scan"
 	"github.com/dstotijn/hetty/pkg/sequencer"
 	"github.com/dstotijn/hetty/pkg/session"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
+	"github.com/dstotijn/hetty/pkg/wslog"
 )
 
 type restAPI struct {
@@ -40,6 +44,8 @@ type restAPI struct {
 	discovery   *discovery.Engine
 	sitemap     *sitemap.Store
 	annotations *annotation.Store
+	paramminer  *paramminer.Engine
+	wslog       *wslog.Store
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -49,6 +55,7 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/scanner/issues", a.handleScannerIssues).Methods(http.MethodGet)
 	r.HandleFunc("/api/scanner/issues", a.handleScannerClear).Methods(http.MethodDelete)
 	r.HandleFunc("/api/scanner/checks", a.handleScannerChecks).Methods(http.MethodGet)
+	r.HandleFunc("/api/scanner/report", a.handleScannerReport).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/intruder/positions", a.handleIntruderPositions).Methods(http.MethodPost)
 	r.HandleFunc("/api/intruder/run", a.handleIntruderRun).Methods(http.MethodPost)
@@ -79,6 +86,16 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/session/profiles", a.handleSessionDelete).Methods(http.MethodDelete)
 
 	r.HandleFunc("/api/discovery", a.handleDiscovery).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/paramminer", a.handleParamMiner).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/gql/introspect", a.handleGQLIntrospect).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/smuggle", a.handleSmuggle).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/websocket/connections", a.handleWSConnections).Methods(http.MethodGet)
+	r.HandleFunc("/api/websocket/messages", a.handleWSMessages).Methods(http.MethodGet)
+	r.HandleFunc("/api/websocket", a.handleWSClear).Methods(http.MethodDelete)
 
 	r.HandleFunc("/api/sitemap", a.handleSitemap).Methods(http.MethodGet)
 	r.HandleFunc("/api/sitemap", a.handleSitemapClear).Methods(http.MethodDelete)
@@ -201,6 +218,33 @@ func (a *restAPI) handleScannerClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
+}
+
+func (a *restAPI) handleScannerReport(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := a.activeProjectID(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "no active project")
+		return
+	}
+	issues, err := a.scanner.FindIssues(r.Context(), projectID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	title := "Hetty Scan Report"
+	now := time.Now()
+
+	switch r.URL.Query().Get("format") {
+	case "md", "markdown":
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="hetty-report.md"`)
+		_, _ = w.Write([]byte(report.Markdown(title, issues, now)))
+	default:
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="hetty-report.html"`)
+		_, _ = w.Write([]byte(report.HTML(title, issues, now)))
+	}
 }
 
 func (a *restAPI) handleScannerChecks(w http.ResponseWriter, r *http.Request) {

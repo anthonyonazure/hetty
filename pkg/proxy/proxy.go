@@ -36,6 +36,8 @@ type Proxy struct {
 	// TODO: Add mutex for modifier funcs.
 	reqModifiers []RequestModifyMiddleware
 	resModifiers []ResponseModifyMiddleware
+
+	wsLogger WebSocketLogger
 }
 
 type Config struct {
@@ -92,6 +94,13 @@ func NewProxy(cfg Config) (*Proxy, error) {
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
 		p.handleConnect(w)
+		return
+	}
+
+	// Intercept WebSocket upgrades for frame logging when a logger is set;
+	// otherwise let the ReverseProxy tunnel them transparently.
+	if p.wsLogger != nil && isWebSocketUpgrade(r) {
+		p.handleWebSocket(w, r)
 		return
 	}
 

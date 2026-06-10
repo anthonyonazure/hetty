@@ -7,10 +7,13 @@ import (
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/discovery"
+	"github.com/dstotijn/hetty/pkg/gql"
 	"github.com/dstotijn/hetty/pkg/intruder"
 	"github.com/dstotijn/hetty/pkg/jwt"
+	"github.com/dstotijn/hetty/pkg/paramminer"
 	"github.com/dstotijn/hetty/pkg/session"
 	"github.com/dstotijn/hetty/pkg/sitemap"
+	"github.com/dstotijn/hetty/pkg/smuggle"
 )
 
 // resolveProfile looks up a named auth profile, returning nil when the name is
@@ -170,6 +173,106 @@ func (a *restAPI) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	writeJSON(w, http.StatusOK, result)
+}
+
+// --- GraphQL introspection -------------------------------------------------
+
+func (a *restAPI) handleGQLIntrospect(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Endpoint string      `json:"endpoint"`
+		Options  gql.Options `json:"options"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Endpoint == "" {
+		writeErr(w, http.StatusBadRequest, "endpoint is required")
+		return
+	}
+	result, err := gql.Introspect(r.Context(), body.Endpoint, body.Options)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// --- WebSocket history -----------------------------------------------------
+
+func (a *restAPI) handleWSConnections(w http.ResponseWriter, r *http.Request) {
+	if a.wslog == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"connections": []interface{}{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"connections": a.wslog.Connections()})
+}
+
+func (a *restAPI) handleWSMessages(w http.ResponseWriter, r *http.Request) {
+	if a.wslog == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"messages": []interface{}{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"messages": a.wslog.Messages(r.URL.Query().Get("connId")),
+	})
+}
+
+func (a *restAPI) handleWSClear(w http.ResponseWriter, r *http.Request) {
+	if a.wslog != nil {
+		a.wslog.Clear()
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
+}
+
+// --- Request smuggling probe -----------------------------------------------
+
+func (a *restAPI) handleSmuggle(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Target  string          `json:"target"`
+		Options smuggle.Options `json:"options"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Target == "" {
+		writeErr(w, http.StatusBadRequest, "target is required")
+		return
+	}
+	result, err := smuggle.Probe(r.Context(), body.Target, body.Options)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// --- Parameter discovery ---------------------------------------------------
+
+func (a *restAPI) handleParamMiner(w http.ResponseWriter, r *http.Request) {
+	if a.paramminer == nil {
+		writeErr(w, http.StatusServiceUnavailable, "parameter discovery is disabled")
+		return
+	}
+	var body struct {
+		Target  string            `json:"target"`
+		Options paramminer.Options `json:"options"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Target == "" {
+		writeErr(w, http.StatusBadRequest, "target is required")
+		return
+	}
+	result, err := a.paramminer.Mine(r.Context(), body.Target, body.Options)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 

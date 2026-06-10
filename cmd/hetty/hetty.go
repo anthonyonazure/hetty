@@ -31,6 +31,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/discovery"
 	"github.com/dstotijn/hetty/pkg/ext"
 	"github.com/dstotijn/hetty/pkg/intruder"
+	"github.com/dstotijn/hetty/pkg/paramminer"
 	"github.com/dstotijn/hetty/pkg/proj"
 	"github.com/dstotijn/hetty/pkg/proxy"
 	"github.com/dstotijn/hetty/pkg/proxy/intercept"
@@ -43,6 +44,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/session"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
+	"github.com/dstotijn/hetty/pkg/wslog"
 )
 
 var version = "0.0.0"
@@ -243,6 +245,8 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	discoveryEngine := discovery.New()
 	sitemapStore := sitemap.New()
 	annotationStore := annotation.New()
+	paramMinerEngine := paramminer.New()
+	wsStore := wslog.New()
 
 	extDir, err := homedir.Expand("~/.hetty/extensions")
 	if err != nil {
@@ -288,6 +292,9 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 
 	// Aggregate proxied traffic into the site map.
 	proxy.UseResponseModifier(sitemapStore.ResponseModifier)
+
+	// Intercept and log WebSocket frames.
+	proxy.SetWebSocketLogger(wsStore)
 
 	// Extension request/response hooks.
 	proxy.UseRequestModifier(extEngine.RequestModifier)
@@ -344,12 +351,14 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		discovery:   discoveryEngine,
 		sitemap:     sitemapStore,
 		annotations: annotationStore,
+		paramminer:  paramMinerEngine,
+		wslog:       wsStore,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
 		"/api/sequencer", "/api/rules", "/api/extensions", "/api/collab", "/api/spider",
 		"/api/authz", "/api/session", "/api/discovery", "/api/sitemap", "/api/jwt",
-		"/api/annotations",
+		"/api/annotations", "/api/paramminer", "/api/gql", "/api/smuggle", "/api/websocket",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}
