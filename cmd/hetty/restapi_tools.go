@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/oklog/ulid"
+
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/discovery"
@@ -197,6 +199,107 @@ func (a *restAPI) handleGQLIntrospect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// --- AI analyst ------------------------------------------------------------
+
+func (a *restAPI) handleAIStatus(w http.ResponseWriter, r *http.Request) {
+	enabled := a.ai != nil && a.ai.Enabled()
+	model := ""
+	if a.ai != nil {
+		model = a.ai.Model()
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"enabled": enabled, "model": model})
+}
+
+func (a *restAPI) aiReady(w http.ResponseWriter) bool {
+	if a.ai == nil || !a.ai.Enabled() {
+		writeErr(w, http.StatusServiceUnavailable, "AI analyst is not configured (set --ai-key or ANTHROPIC_API_KEY)")
+		return false
+	}
+	return true
+}
+
+func (a *restAPI) handleAITriage(w http.ResponseWriter, r *http.Request) {
+	if !a.aiReady(w) {
+		return
+	}
+	projectID, ok := a.activeProjectID(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "no active project")
+		return
+	}
+	var body struct {
+		IssueID string `json:"issueId"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	id, err := ulid.Parse(body.IssueID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid issue ID")
+		return
+	}
+	issue, err := a.scanner.FindIssueByID(r.Context(), projectID, id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "issue not found")
+		return
+	}
+	triage, err := a.ai.TriageIssue(r.Context(), issue)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, triage)
+}
+
+func (a *restAPI) handleAIPayloads(w http.ResponseWriter, r *http.Request) {
+	if !a.aiReady(w) {
+		return
+	}
+	var body struct {
+		VulnClass string `json:"vulnClass"`
+		URL       string `json:"url"`
+		Param     string `json:"param"`
+		Context   string `json:"context"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.VulnClass == "" {
+		writeErr(w, http.StatusBadRequest, "vulnClass is required")
+		return
+	}
+	suggestion, err := a.ai.SuggestPayloads(r.Context(), body.VulnClass, body.URL, body.Param, body.Context)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, suggestion)
+}
+
+func (a *restAPI) handleAIReport(w http.ResponseWriter, r *http.Request) {
+	if !a.aiReady(w) {
+		return
+	}
+	projectID, ok := a.activeProjectID(r)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "no active project")
+		return
+	}
+	issues, err := a.scanner.FindIssues(r.Context(), projectID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	md, err := a.ai.GenerateReport(r.Context(), issues)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"markdown": md})
 }
 
 // --- WebSocket history -----------------------------------------------------

@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/oklog/ulid"
 
+	"github.com/dstotijn/hetty/pkg/ai"
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/collab"
@@ -46,6 +47,7 @@ type restAPI struct {
 	annotations *annotation.Store
 	paramminer  *paramminer.Engine
 	wslog       *wslog.Store
+	ai          *ai.Client
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -96,6 +98,11 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/websocket/connections", a.handleWSConnections).Methods(http.MethodGet)
 	r.HandleFunc("/api/websocket/messages", a.handleWSMessages).Methods(http.MethodGet)
 	r.HandleFunc("/api/websocket", a.handleWSClear).Methods(http.MethodDelete)
+
+	r.HandleFunc("/api/ai/status", a.handleAIStatus).Methods(http.MethodGet)
+	r.HandleFunc("/api/ai/triage", a.handleAITriage).Methods(http.MethodPost)
+	r.HandleFunc("/api/ai/payloads", a.handleAIPayloads).Methods(http.MethodPost)
+	r.HandleFunc("/api/ai/report", a.handleAIReport).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/sitemap", a.handleSitemap).Methods(http.MethodGet)
 	r.HandleFunc("/api/sitemap", a.handleSitemapClear).Methods(http.MethodDelete)

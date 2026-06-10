@@ -114,14 +114,56 @@ function parseHeaderLines(text: string): Record<string, string> {
   return headers;
 }
 
+interface Triage {
+  isLikelyReal: boolean;
+  confidence: string;
+  falsePositiveRisk: string;
+  suggestedSeverity: string;
+  rationale: string;
+}
+
 function IssueDetail({ issue }: { issue: Issue }): JSX.Element {
+  const [triage, setTriage] = useState<Triage | null>(null);
+  const [triaging, setTriaging] = useState(false);
+  const [triageError, setTriageError] = useState("");
+
+  useEffect(() => {
+    setTriage(null);
+    setTriageError("");
+  }, [issue.id]);
+
+  const runTriage = () => {
+    setTriaging(true);
+    setTriageError("");
+    apiPost<Triage>("/api/ai/triage", { issueId: issue.id })
+      .then(setTriage)
+      .catch((err) => setTriageError(err.message))
+      .finally(() => setTriaging(false));
+  };
+
   return (
     <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <Typography variant="h6">{issue.name}</Typography>
         <Chip size="small" label={issue.severity} color={severityColor(issue.severity)} />
         <Chip size="small" label={issue.confidence} variant="outlined" />
+        <Box sx={{ flexGrow: 1 }} />
+        <Button size="small" variant="outlined" onClick={runTriage} disabled={triaging}>
+          {triaging ? <CircularProgress size={18} /> : "AI triage"}
+        </Button>
       </Box>
+      {triageError && (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          {triageError}
+        </Alert>
+      )}
+      {triage && (
+        <Alert severity={triage.isLikelyReal ? "warning" : "info"} sx={{ mt: 1 }}>
+          <strong>{triage.isLikelyReal ? "Likely real" : "Likely false positive"}</strong> (confidence{" "}
+          {triage.confidence}, FP risk {triage.falsePositiveRisk}, suggested severity {triage.suggestedSeverity}).{" "}
+          {triage.rationale}
+        </Alert>
+      )}
       <Typography variant="body2" sx={{ mt: 1 }}>
         {issue.description}
       </Typography>

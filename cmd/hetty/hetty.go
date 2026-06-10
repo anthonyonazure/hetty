@@ -23,6 +23,7 @@ import (
 	"go.etcd.io/bbolt"
 	"go.uber.org/zap"
 
+	"github.com/dstotijn/hetty/pkg/ai"
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/api"
 	"github.com/dstotijn/hetty/pkg/authz"
@@ -93,6 +94,8 @@ type HettyCommand struct {
 	dnsAddr   string
 	dnsDomain string
 	rate      float64
+	aiKey     string
+	aiModel   string
 }
 
 func NewHettyCommand() (*ffcli.Command, *Config) {
@@ -114,6 +117,8 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 	fs.StringVar(&cmd.dnsAddr, "dns-addr", "", "UDP address for the OOB DNS collaborator listener (e.g. \":53\"). Disabled when empty.")
 	fs.StringVar(&cmd.dnsDomain, "dns-domain", "", "Base domain delegated to the DNS collaborator (e.g. \"oob.example.com\").")
 	fs.Float64Var(&cmd.rate, "rate", 0, "Global request-rate cap (requests/sec) for the scanner, intruder and spider. 0 = unthrottled.")
+	fs.StringVar(&cmd.aiKey, "ai-key", "", "Anthropic API key enabling the AI analyst. Falls back to the ANTHROPIC_API_KEY env var.")
+	fs.StringVar(&cmd.aiModel, "ai-model", "", "Model for the AI analyst (default: claude-opus-4-8).")
 
 	cmd.config.RegisterFlags(fs)
 
@@ -249,6 +254,16 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	paramMinerEngine := paramminer.New()
 	wsStore := wslog.New()
 
+	// AI analyst (optional). Key from flag, falling back to the environment.
+	aiKey := cmd.aiKey
+	if aiKey == "" {
+		aiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	aiClient := ai.NewClient(ai.Config{APIKey: aiKey, Model: cmd.aiModel})
+	if aiClient.Enabled() {
+		mainLogger.Info(fmt.Sprintf("AI analyst enabled (model: %v).", aiClient.Model()))
+	}
+
 	// Durability: restore persisted tool state, then flush periodically and on
 	// shutdown so the site map, auth profiles, annotations, collaborator
 	// interactions and WebSocket history survive restarts.
@@ -379,12 +394,14 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		annotations: annotationStore,
 		paramminer:  paramMinerEngine,
 		wslog:       wsStore,
+		ai:          aiClient,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
 		"/api/sequencer", "/api/rules", "/api/extensions", "/api/collab", "/api/spider",
 		"/api/authz", "/api/session", "/api/discovery", "/api/sitemap", "/api/jwt",
 		"/api/annotations", "/api/paramminer", "/api/gql", "/api/smuggle", "/api/websocket",
+		"/api/ai",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}

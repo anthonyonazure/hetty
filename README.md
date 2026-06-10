@@ -56,6 +56,9 @@ features tailored to the needs of the infosec and bug bounty community.
 - **Durable tool state** — the site map, auth profiles, annotations, OOB
   collaborator interactions and WebSocket history persist to the project
   database and survive restarts
+- **AI analyst** (optional) — an LLM assistant that triages scanner findings
+  (false-positive scoring), suggests payloads, and drafts proof-of-concept
+  reports; enable with `--ai-key` or `ANTHROPIC_API_KEY`
 - **Extension ecosystem** — JavaScript extensions with request/response hooks
   and custom active/passive scan checks
 - **Out-of-band (OOB) collaborator** for blind vulnerability detection, over
@@ -84,6 +87,7 @@ GraphQL endpoint:
 | GraphQL | `POST /api/gql/introspect` |
 | Request smuggling | `POST /api/smuggle` |
 | WebSocket history | `GET /api/websocket/connections`, `GET /api/websocket/messages`, `DELETE /api/websocket` |
+| AI analyst | `GET /api/ai/status`, `POST /api/ai/triage`, `POST /api/ai/payloads`, `POST /api/ai/report` |
 | Authorization tester | `POST /api/authz/analyze` |
 | Auth profiles | `GET/PUT /api/session/profiles`, `DELETE /api/session/profiles?name=…` |
 | Content discovery | `POST /api/discovery` |

@@ -1,5 +1,6 @@
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AltRouteIcon from "@mui/icons-material/AltRoute";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import BoltIcon from "@mui/icons-material/Bolt";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import CallSplitIcon from "@mui/icons-material/CallSplit";
@@ -80,6 +81,7 @@ export enum Page {
   GraphQL,
   Smuggle,
   WebSocket,
+  AIAnalyst,
 }
 
 const drawerWidth = 240;
@@ -477,6 +479,16 @@ export function Layout({ title, page, children }: Props): JSX.Element {
                 </ListItemIcon>
               </Tooltip>
               <ListItemText primary="WebSockets" />
+            </ListItemButton>
+          </Link>
+          <Link href="/ai" passHref>
+            <ListItemButton key="ai" selected={page === Page.AIAnalyst}>
+              <Tooltip title="AI analyst">
+                <ListItemIcon>
+                  <AutoAwesomeIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="AI Analyst" />
             </ListItemButton>
           </Link>
           <Divider />
