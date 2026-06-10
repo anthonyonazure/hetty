@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -14,9 +15,16 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { apiPost } from "lib/restApi";
+import { apiGet, apiPost } from "lib/restApi";
+
+interface WordlistInfo {
+  name: string;
+  category: string;
+  description: string;
+  size: number;
+}
 
 interface Hit {
   url: string;
@@ -44,6 +52,8 @@ function statusColor(status: number): "success" | "warning" | "error" | "info" |
 export default function Discovery(): JSX.Element {
   const [seed, setSeed] = useState("");
   const [wordlistText, setWordlistText] = useState("");
+  const [preset, setPreset] = useState("");
+  const [presets, setPresets] = useState<WordlistInfo[]>([]);
   const [extensions, setExtensions] = useState("");
   const [maxDepth, setMaxDepth] = useState("0");
   const [concurrency, setConcurrency] = useState("10");
@@ -51,6 +61,12 @@ export default function Discovery(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<DiscoveryResult | null>(null);
+
+  useEffect(() => {
+    apiGet<{ lists: WordlistInfo[] | null }>("/api/wordlists")
+      .then((data) => setPresets((data.lists || []).filter((l) => l.category === "paths")))
+      .catch(() => undefined);
+  }, []);
 
   const handleRun = () => {
     setLoading(true);
@@ -66,6 +82,7 @@ export default function Discovery(): JSX.Element {
 
     apiPost<DiscoveryResult>("/api/discovery", {
       seed,
+      wordlistName: wordlist.length === 0 ? preset : "",
       options: {
         wordlist,
         extensions: exts,
@@ -122,9 +139,26 @@ export default function Discovery(): JSX.Element {
           onChange={(e) => setConcurrency(e.target.value)}
         />
         <TextField label="Req/sec (0=∞)" sx={{ width: 130 }} value={rps} onChange={(e) => setRps(e.target.value)} />
+        <TextField
+          select
+          label="Preset wordlist"
+          sx={{ width: 220 }}
+          value={preset}
+          onChange={(e) => setPreset(e.target.value)}
+          helperText="Used when the box below is empty"
+        >
+          <MenuItem value="">
+            <em>Built-in common</em>
+          </MenuItem>
+          {presets.map((p) => (
+            <MenuItem key={p.name} value={p.name}>
+              {p.name} ({p.size})
+            </MenuItem>
+          ))}
+        </TextField>
       </Box>
       <TextField
-        label="Wordlist (one per line, optional)"
+        label="Wordlist (one per line — overrides preset)"
         fullWidth
         multiline
         minRows={3}

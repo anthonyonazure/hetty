@@ -39,6 +39,7 @@ export default function Spider(): JSX.Element {
   const [maxPages, setMaxPages] = useState("25");
   const [maxDepth, setMaxDepth] = useState("3");
   const [sameHostOnly, setSameHostOnly] = useState(true);
+  const [renderJS, setRenderJS] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CrawlResult | null>(null);
@@ -46,7 +47,8 @@ export default function Spider(): JSX.Element {
   const handleCrawl = () => {
     setLoading(true);
     setError("");
-    apiPost<CrawlResult>("/api/spider/crawl", {
+    const endpoint = renderJS ? "/api/browser/crawl" : "/api/spider/crawl";
+    apiPost<CrawlResult>(endpoint, {
       seed,
       options: {
         maxPages: parseInt(maxPages, 10) || 25,
@@ -94,9 +96,14 @@ export default function Spider(): JSX.Element {
           label="Same host only"
           sx={{ whiteSpace: "nowrap" }}
         />
+        <FormControlLabel
+          control={<Switch checked={renderJS} onChange={(e) => setRenderJS(e.target.checked)} />}
+          label="Render JS (headless Chrome)"
+          sx={{ whiteSpace: "nowrap" }}
+        />
       </Box>
       <Button variant="contained" onClick={handleCrawl} disabled={loading || !seed}>
-        {loading ? <CircularProgress size={24} /> : "Crawl"}
+        {loading ? <CircularProgress size={24} /> : renderJS ? "Crawl (browser)" : "Crawl"}
       </Button>
       {result && (
         <Box sx={{ mt: 2 }}>

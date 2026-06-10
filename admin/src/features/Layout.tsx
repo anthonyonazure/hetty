@@ -9,6 +9,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import DeviceHubIcon from "@mui/icons-material/DeviceHub";
+import DnsIcon from "@mui/icons-material/Dns";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import FindInPageIcon from "@mui/icons-material/FindInPage";
 import FindReplaceIcon from "@mui/icons-material/FindReplace";
@@ -21,6 +22,7 @@ import LocationSearchingIcon from "@mui/icons-material/LocationSearching";
 import MenuIcon from "@mui/icons-material/Menu";
 import PeopleIcon from "@mui/icons-material/People";
 import SendIcon from "@mui/icons-material/Send";
+import RuleIcon from "@mui/icons-material/Rule";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import TransformIcon from "@mui/icons-material/Transform";
@@ -82,6 +84,8 @@ export enum Page {
   Smuggle,
   WebSocket,
   AIAnalyst,
+  Recon,
+  Templates,
 }
 
 const drawerWidth = 240;
@@ -479,6 +483,26 @@ export function Layout({ title, page, children }: Props): JSX.Element {
                 </ListItemIcon>
               </Tooltip>
               <ListItemText primary="WebSockets" />
+            </ListItemButton>
+          </Link>
+          <Link href="/recon" passHref>
+            <ListItemButton key="recon" selected={page === Page.Recon}>
+              <Tooltip title="Recon">
+                <ListItemIcon>
+                  <DnsIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Recon" />
+            </ListItemButton>
+          </Link>
+          <Link href="/templates" passHref>
+            <ListItemButton key="templates" selected={page === Page.Templates}>
+              <Tooltip title="Templated scanner">
+                <ListItemIcon>
+                  <RuleIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Templates" />
             </ListItemButton>
           </Link>
           <Link href="/ai" passHref>
