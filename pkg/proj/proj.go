@@ -14,6 +14,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/filter"
 	"github.com/dstotijn/hetty/pkg/proxy/intercept"
 	"github.com/dstotijn/hetty/pkg/reqlog"
+	"github.com/dstotijn/hetty/pkg/scan"
 	"github.com/dstotijn/hetty/pkg/scope"
 	"github.com/dstotijn/hetty/pkg/sender"
 )
@@ -26,6 +27,7 @@ type Service struct {
 	interceptSvc    *intercept.Service
 	reqLogSvc       *reqlog.Service
 	senderSvc       *sender.Service
+	scanSvc         *scan.Service
 	scope           *scope.Scope
 	activeProjectID ulid.ULID
 	mu              sync.RWMutex
@@ -73,6 +75,7 @@ type Config struct {
 	InterceptService *intercept.Service
 	ReqLogService    *reqlog.Service
 	SenderService    *sender.Service
+	ScanService      *scan.Service
 	Scope            *scope.Scope
 }
 
@@ -83,6 +86,7 @@ func NewService(cfg Config) (*Service, error) {
 		interceptSvc: cfg.InterceptService,
 		reqLogSvc:    cfg.ReqLogService,
 		senderSvc:    cfg.SenderService,
+		scanSvc:      cfg.ScanService,
 		scope:        cfg.Scope,
 	}, nil
 }
@@ -126,6 +130,9 @@ func (svc *Service) CloseProject() error {
 	})
 	svc.senderSvc.SetActiveProjectID(ulid.ULID{})
 	svc.senderSvc.SetFindReqsFilter(sender.FindRequestsFilter{})
+	if svc.scanSvc != nil {
+		svc.scanSvc.SetActiveProjectID(ulid.ULID{})
+	}
 	svc.scope.SetRules(nil)
 
 	return nil
@@ -180,6 +187,10 @@ func (svc *Service) OpenProject(ctx context.Context, projectID ulid.ULID) (Proje
 		OnlyInScope: project.Settings.SenderOnlyFindInScope,
 		SearchExpr:  project.Settings.SenderSearchExpr,
 	})
+
+	if svc.scanSvc != nil {
+		svc.scanSvc.SetActiveProjectID(project.ID)
+	}
 
 	// Scope settings.
 	svc.scope.SetRules(project.Settings.ScopeRules)

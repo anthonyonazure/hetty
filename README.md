@@ -21,6 +21,82 @@ features tailored to the needs of the infosec and bug bounty community.
 - Scope support, to help keep work organized
 - Easy-to-use web based admin interface
 - Project based database storage, to help keep work organized
+- **Active & passive vulnerability scanner** with a built-in check library
+  (reflected XSS, error-based SQLi, time-based OS command injection, path
+  traversal/LFI, SSTI, CRLF/header injection, open redirect, and out-of-band
+  blind detection — plus passive checks for missing security headers, insecure
+  cookies, banner and verbose-error disclosure, and directory listings)
+- **Intruder** — automated payload attacks (sniper, battering ram, pitchfork,
+  cluster bomb) with payload processors and response grep match/extract
+- **Crawler/spider** with one-click crawl-and-audit
+- **Decoder** (URL, Base64, hex, HTML, gzip/zlib, JWT, MD5/SHA hashing, smart decode)
+- **Comparer** (word/byte diff) and **Sequencer** (token entropy analysis)
+- **Match & Replace** rules that rewrite proxied requests/responses
+- **Authorization tester** (Autorize-style) — replays a request under other
+  identities to find IDOR / BOLA / broken access control
+- **Auth profiles & session handling** — named identities (headers, cookies,
+  bearer, CSRF-token macro) applied by the authorization tester, scanner and
+  intruder so automated requests run as an authenticated user
+- **Content discovery** — recursive forced browsing with a built-in wordlist
+  and soft-404 calibration
+- **Site map** — host→path tree aggregating proxy, spider and discovery traffic
+  with observed parameters and detected technology
+- **JavaScript recon** — passive mining of proxied JS for endpoints and leaked
+  secrets (LinkFinder/SecretFinder-style)
+- **JWT editor** — re-sign edited claims, forge `alg:none`, HS/RS key confusion,
+  and weak-secret brute force
+- **Extension ecosystem** — JavaScript extensions with request/response hooks
+  and custom active/passive scan checks
+- **Out-of-band (OOB) collaborator** for blind vulnerability detection, over
+  HTTP and (optionally) DNS
+- **Request annotations**, **rate limiting**, and **"Send to" tool routing**
+- **JSON/REST API** exposing every tool for automation
+
+## Security tooling
+
+In addition to the proxy, request log, sender (repeater) and intercept tools,
+Hetty ships a full suite of testing tools modeled on Burp Suite. Every tool is
+available from the web dashboard and via a JSON/REST API mounted alongside the
+GraphQL endpoint:
+
+| Tool | Endpoint(s) |
+| --- | --- |
+| Scanner | `POST /api/scanner/scan`, `GET/DELETE /api/scanner/issues`, `GET /api/scanner/checks` |
+| Crawl & audit | `POST /api/spider/crawl`, `POST /api/scanner/crawl-scan` |
+| Intruder | `POST /api/intruder/positions`, `POST /api/intruder/run` |
+| Decoder | `GET /api/decoder/codecs`, `POST /api/decoder`, `POST /api/decoder/smart` |
+| Comparer | `POST /api/comparer` |
+| Sequencer | `POST /api/sequencer` |
+| Match & Replace | `GET/PUT /api/rules` |
+| Authorization tester | `POST /api/authz/analyze` |
+| Auth profiles | `GET/PUT /api/session/profiles`, `DELETE /api/session/profiles?name=…` |
+| Content discovery | `POST /api/discovery` |
+| Site map | `GET/DELETE /api/sitemap`, `POST /api/sitemap/ingest` |
+| JWT editor | `POST /api/jwt/parse`, `/api/jwt/sign`, `/api/jwt/alg-none`, `/api/jwt/brute` |
+| Annotations | `GET/PUT /api/annotations`, `DELETE /api/annotations?id=…` |
+| Extensions | `GET /api/extensions`, `POST /api/extensions/reload` |
+| Collaborator | `POST /api/collab/token`, `GET /api/collab/interactions?token=…` |
+
+The scanner persists issues per project, de-duplicating by fingerprint. Passive
+checks also run automatically on all proxied traffic (including JavaScript recon
+that mines proxied JS for endpoints and secrets). The collaborator records
+out-of-band callbacks at `/oob/<token>` and is used by the scanner's blind
+detection check; pass `--dns-addr :53 --dns-domain oob.example.com` to also
+record DNS pingbacks for a delegated domain.
+
+The authorization tester replays a request under stored auth profiles (and an
+unauthenticated variant) and classifies each as **bypassed** / **enforced** /
+**ambiguous** by comparing responses to the privileged baseline. Profiles are
+managed under Auth Profiles and may carry a CSRF-token macro. Proxy-log rows
+have **Send to Scanner / Intruder / Authz** actions, and the site map organizes
+everything Hetty has seen into a per-host path tree.
+
+### Extensions
+
+JavaScript extensions are loaded from `~/.hetty/extensions`. They interact with
+Hetty through the `hetty` host API to hook proxied traffic, send requests, and
+register custom scan checks. See [`examples/extensions`](examples/extensions/)
+for working samples and the full API reference.
 
 👷‍♂️ Hetty is under active development. Check the <a
 href="https://github.com/dstotijn/hetty/projects/1">backlog</a> for the current

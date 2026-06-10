@@ -75,6 +75,11 @@ func (db *Database) UpsertProject(ctx context.Context, project proj.Project) err
 			return fmt.Errorf("bolt: failed to create sender requests bucket: %w", err)
 		}
 
+		_, err = b.CreateBucketIfNotExists(scanIssuesBucketName)
+		if err != nil {
+			return fmt.Errorf("bolt: failed to create scan issues bucket: %w", err)
+		}
+
 		return nil
 	})
 	if err != nil {

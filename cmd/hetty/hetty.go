@@ -22,15 +22,27 @@ import (
 	"go.etcd.io/bbolt"
 	"go.uber.org/zap"
 
+	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/api"
+	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/chrome"
+	"github.com/dstotijn/hetty/pkg/collab"
 	"github.com/dstotijn/hetty/pkg/db/bolt"
+	"github.com/dstotijn/hetty/pkg/discovery"
+	"github.com/dstotijn/hetty/pkg/ext"
+	"github.com/dstotijn/hetty/pkg/intruder"
 	"github.com/dstotijn/hetty/pkg/proj"
 	"github.com/dstotijn/hetty/pkg/proxy"
 	"github.com/dstotijn/hetty/pkg/proxy/intercept"
+	"github.com/dstotijn/hetty/pkg/ratelimit"
 	"github.com/dstotijn/hetty/pkg/reqlog"
+	"github.com/dstotijn/hetty/pkg/rules"
+	"github.com/dstotijn/hetty/pkg/scan"
 	"github.com/dstotijn/hetty/pkg/scope"
 	"github.com/dstotijn/hetty/pkg/sender"
+	"github.com/dstotijn/hetty/pkg/session"
+	"github.com/dstotijn/hetty/pkg/sitemap"
+	"github.com/dstotijn/hetty/pkg/spider"
 )
 
 var version = "0.0.0"
@@ -69,12 +81,15 @@ Visit https://hetty.xyz to learn more about Hetty.
 type HettyCommand struct {
 	config *Config
 
-	cert    string
-	key     string
-	db      string
-	addr    string
-	chrome  bool
-	version bool
+	cert      string
+	key       string
+	db        string
+	addr      string
+	chrome    bool
+	version   bool
+	dnsAddr   string
+	dnsDomain string
+	rate      float64
 }
 
 func NewHettyCommand() (*ffcli.Command, *Config) {
@@ -93,6 +108,9 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 	fs.BoolVar(&cmd.chrome, "chrome", false, "Launch Chrome with proxy settings applied and certificate errors ignored.")
 	fs.BoolVar(&cmd.version, "version", false, "Output version.")
 	fs.BoolVar(&cmd.version, "v", false, "Output version.")
+	fs.StringVar(&cmd.dnsAddr, "dns-addr", "", "UDP address for the OOB DNS collaborator listener (e.g. \":53\"). Disabled when empty.")
+	fs.StringVar(&cmd.dnsDomain, "dns-domain", "", "Base domain delegated to the DNS collaborator (e.g. \"oob.example.com\").")
+	fs.Float64Var(&cmd.rate, "rate", 0, "Global request-rate cap (requests/sec) for the scanner, intruder and spider. 0 = unthrottled.")
 
 	cmd.config.RegisterFlags(fs)
 
@@ -180,11 +198,71 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		ReqLogService: reqLogService,
 	})
 
+	scanService := scan.NewService(scan.Config{
+		Repository: boltDB,
+		Options:    scan.DefaultOptions(),
+		Logger:     cmd.config.logger.Named("scan").Sugar(),
+	})
+
+	rulesEngine := rules.NewEngine()
+	intruderEngine := intruder.NewEngine()
+	spiderCrawler := spider.New()
+
+	// Global request-rate cap shared across the active tools (--rate).
+	if cmd.rate > 0 {
+		sharedLimiter := ratelimit.New(ratelimit.Config{RequestsPerSecond: cmd.rate})
+		scanService.SetLimiter(sharedLimiter)
+		intruderEngine.SetLimiter(sharedLimiter)
+		spiderCrawler.SetLimiter(sharedLimiter)
+	}
+
+	collabServer := collab.NewServer(url + "/oob")
+	scanService.SetOOB(collabServer)
+
+	// Out-of-band DNS collaborator (optional).
+	if cmd.dnsDomain != "" {
+		collabServer.SetDNSDomain(cmd.dnsDomain)
+	}
+	if cmd.dnsAddr != "" {
+		dnsConn, err := net.ListenPacket("udp", cmd.dnsAddr)
+		if err != nil {
+			mainLogger.Warn("Failed to start DNS collaborator listener.", zap.Error(err))
+		} else {
+			go func() {
+				if err := collabServer.ServeDNS(ctx, dnsConn, nil); err != nil && ctx.Err() == nil {
+					mainLogger.Warn("DNS collaborator listener stopped.", zap.Error(err))
+				}
+			}()
+			mainLogger.Info(fmt.Sprintf("OOB DNS collaborator listening on %v ...", cmd.dnsAddr))
+		}
+	}
+
+	// New bug-bounty tooling services.
+	sessionStore := session.NewStore()
+	authzEngine := authz.NewEngine(authz.Config{})
+	discoveryEngine := discovery.New()
+	sitemapStore := sitemap.New()
+	annotationStore := annotation.New()
+
+	extDir, err := homedir.Expand("~/.hetty/extensions")
+	if err != nil {
+		cmd.config.logger.Fatal("Failed to parse extensions dir.", zap.Error(err))
+	}
+	extEngine := ext.NewEngine(ext.Config{
+		Dir:         extDir,
+		ScanService: scanService,
+		Logger:      cmd.config.logger.Named("ext").Sugar(),
+	})
+	if _, err := extEngine.LoadAll(); err != nil {
+		mainLogger.Warn("Failed to load extensions.", zap.Error(err))
+	}
+
 	projService, err := proj.NewService(proj.Config{
 		Repository:       boltDB,
 		InterceptService: interceptService,
 		ReqLogService:    reqLogService,
 		SenderService:    senderService,
+		ScanService:      scanService,
 		Scope:            scope,
 	})
 	if err != nil {
@@ -204,6 +282,20 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	proxy.UseResponseModifier(reqLogService.ResponseModifier)
 	proxy.UseRequestModifier(interceptService.RequestModifier)
 	proxy.UseResponseModifier(interceptService.ResponseModifier)
+
+	// Passive scanning of proxied responses.
+	proxy.UseResponseModifier(scanService.ResponseModifier)
+
+	// Aggregate proxied traffic into the site map.
+	proxy.UseResponseModifier(sitemapStore.ResponseModifier)
+
+	// Extension request/response hooks.
+	proxy.UseRequestModifier(extEngine.RequestModifier)
+	proxy.UseResponseModifier(extEngine.ResponseModifier)
+
+	// Match & replace rules (run last so they have the final say).
+	proxy.UseRequestModifier(rulesEngine.RequestModifier)
+	proxy.UseResponseModifier(rulesEngine.ResponseModifier)
 
 	fsSub, err := fs.Sub(adminContent, "admin")
 	if err != nil {
@@ -237,6 +329,34 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		InterceptService:  interceptService,
 		SenderService:     senderService,
 	}, gqlEndpoint))
+
+	// REST API for the new tooling.
+	toolsAPI := (&restAPI{
+		scanner:     scanService,
+		intruder:    intruderEngine,
+		rules:       rulesEngine,
+		ext:         extEngine,
+		collab:      collabServer,
+		proj:        projService,
+		spider:      spiderCrawler,
+		authz:       authzEngine,
+		sessions:    sessionStore,
+		discovery:   discoveryEngine,
+		sitemap:     sitemapStore,
+		annotations: annotationStore,
+	}).Handler()
+	for _, prefix := range []string{
+		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
+		"/api/sequencer", "/api/rules", "/api/extensions", "/api/collab", "/api/spider",
+		"/api/authz", "/api/session", "/api/discovery", "/api/sitemap", "/api/jwt",
+		"/api/annotations",
+	} {
+		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
+	}
+
+	// Out-of-band collaborator callback endpoint. Mounted under /oob/ so it does
+	// not shadow the /collab/ admin UI page.
+	adminRouter.PathPrefix("/oob/").Handler(http.StripPrefix("/oob", collabServer.Handler()))
 
 	// Admin interface.
 	adminRouter.PathPrefix("").Handler(adminHandler)
