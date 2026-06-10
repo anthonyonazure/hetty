@@ -1,6 +1,14 @@
 *.vscode
 /dist
 /hetty
+/hetty.exe
+*.exe
 /cmd/hetty/admin
 *.pem
 *.test
+
+# Local agent / tooling config
+/.claude
+/admin/node_modules
+/admin/.next
+/admin/dist

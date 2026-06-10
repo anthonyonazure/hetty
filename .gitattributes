@@ -1,0 +1,16 @@
+# Normalize line endings: store everything as LF in the repo, and check out as
+# LF on every platform. This stops Windows autocrlf from flip-flopping the
+# working tree (which made prettier/eslint flag phantom CRLF changes on builds).
+* text=auto eol=lf
+
+# Binary assets must never be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pem binary
+*.db binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
