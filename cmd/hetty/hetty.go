@@ -27,6 +27,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/api"
 	"github.com/dstotijn/hetty/pkg/authz"
+	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/chrome"
 	"github.com/dstotijn/hetty/pkg/collab"
 	"github.com/dstotijn/hetty/pkg/db/bolt"
@@ -38,6 +39,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/proxy"
 	"github.com/dstotijn/hetty/pkg/proxy/intercept"
 	"github.com/dstotijn/hetty/pkg/ratelimit"
+	"github.com/dstotijn/hetty/pkg/recon"
 	"github.com/dstotijn/hetty/pkg/reqlog"
 	"github.com/dstotijn/hetty/pkg/rules"
 	"github.com/dstotijn/hetty/pkg/scan"
@@ -129,6 +131,7 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 		Subcommands: []*ffcli.Command{
 			NewCertCommand(cmd.config),
 			newScanCommand(),
+			newMCPCommand(),
 		},
 		Exec: cmd.Exec,
 		UsageFunc: func(*ffcli.Command) string {
@@ -412,13 +415,15 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		ai:          aiClient,
 		tmplEngine:  tmplEngine,
 		templates:   loadedTemplates,
+		recon:       recon.New(),
+		browser:     browser.New(),
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
 		"/api/sequencer", "/api/rules", "/api/extensions", "/api/collab", "/api/spider",
 		"/api/authz", "/api/session", "/api/discovery", "/api/sitemap", "/api/jwt",
 		"/api/annotations", "/api/paramminer", "/api/gql", "/api/smuggle", "/api/websocket",
-		"/api/ai", "/api/wordlists", "/api/template",
+		"/api/ai", "/api/wordlists", "/api/template", "/api/recon", "/api/browser",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}

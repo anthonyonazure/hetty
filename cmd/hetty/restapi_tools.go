@@ -9,17 +9,113 @@ import (
 
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/authz"
+	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/discovery"
 	"github.com/dstotijn/hetty/pkg/gql"
 	"github.com/dstotijn/hetty/pkg/intruder"
 	"github.com/dstotijn/hetty/pkg/jwt"
 	"github.com/dstotijn/hetty/pkg/paramminer"
+	"github.com/dstotijn/hetty/pkg/recon"
 	"github.com/dstotijn/hetty/pkg/session"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/smuggle"
 	"github.com/dstotijn/hetty/pkg/template"
 	"github.com/dstotijn/hetty/pkg/wordlists"
 )
+
+// --- Browser (JS-rendered) crawler -----------------------------------------
+
+func (a *restAPI) handleBrowserCrawl(w http.ResponseWriter, r *http.Request) {
+	if a.browser == nil {
+		writeErr(w, http.StatusServiceUnavailable, "browser crawler is disabled")
+		return
+	}
+	var body struct {
+		Seed    string          `json:"seed"`
+		Options browser.Options `json:"options"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Seed == "" {
+		writeErr(w, http.StatusBadRequest, "seed is required")
+		return
+	}
+	result, err := a.browser.Crawl(r.Context(), body.Seed, body.Options)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "browser crawl failed (is Chrome installed?): "+err.Error())
+		return
+	}
+	if a.sitemap != nil {
+		for _, u := range result.URLs {
+			a.sitemap.Add(sitemap.Entry{URL: u, Method: "GET", Source: "browser"})
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// --- Recon -----------------------------------------------------------------
+
+func (a *restAPI) handleReconSubdomains(w http.ResponseWriter, r *http.Request) {
+	if a.recon == nil {
+		writeErr(w, http.StatusServiceUnavailable, "recon is disabled")
+		return
+	}
+	var body struct {
+		Domain  string        `json:"domain"`
+		Options recon.Options `json:"options"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Domain == "" {
+		writeErr(w, http.StatusBadRequest, "domain is required")
+		return
+	}
+	result, err := a.recon.EnumerateSubdomains(r.Context(), body.Domain, body.Options)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Feed resolved hosts into the site map.
+	if a.sitemap != nil {
+		for _, s := range result.Subdomains {
+			if s.Resolved {
+				a.sitemap.Add(sitemap.Entry{URL: "https://" + s.Host + "/", Method: "GET", Source: "recon"})
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *restAPI) handleReconFingerprint(w http.ResponseWriter, r *http.Request) {
+	if a.recon == nil {
+		writeErr(w, http.StatusServiceUnavailable, "recon is disabled")
+		return
+	}
+	var body struct {
+		URL string `json:"url"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.URL == "" {
+		writeErr(w, http.StatusBadRequest, "url is required")
+		return
+	}
+	tech, err := a.recon.Fingerprint(r.Context(), body.URL)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if a.sitemap != nil {
+		a.sitemap.Add(sitemap.Entry{URL: body.URL, Method: "GET", Status: tech.Status, Server: tech.Server, Powered: tech.Powered, Source: "recon"})
+	}
+	writeJSON(w, http.StatusOK, tech)
+}
 
 // --- Templated scanner -----------------------------------------------------
 

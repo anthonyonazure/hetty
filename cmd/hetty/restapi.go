@@ -14,6 +14,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/ai"
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/authz"
+	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/collab"
 	"github.com/dstotijn/hetty/pkg/comparer"
 	"github.com/dstotijn/hetty/pkg/decoder"
@@ -22,6 +23,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/intruder"
 	"github.com/dstotijn/hetty/pkg/paramminer"
 	"github.com/dstotijn/hetty/pkg/proj"
+	"github.com/dstotijn/hetty/pkg/recon"
 	"github.com/dstotijn/hetty/pkg/report"
 	"github.com/dstotijn/hetty/pkg/rules"
 	"github.com/dstotijn/hetty/pkg/scan"
@@ -51,6 +53,8 @@ type restAPI struct {
 	ai          *ai.Client
 	tmplEngine  *template.Engine
 	templates   []*template.Template
+	recon       *recon.Engine
+	browser     *browser.Crawler
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -107,6 +111,11 @@ func (a *restAPI) Handler() http.Handler {
 
 	r.HandleFunc("/api/template", a.handleTemplateList).Methods(http.MethodGet)
 	r.HandleFunc("/api/template/run", a.handleTemplateRun).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/recon/subdomains", a.handleReconSubdomains).Methods(http.MethodPost)
+	r.HandleFunc("/api/recon/fingerprint", a.handleReconFingerprint).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/browser/crawl", a.handleBrowserCrawl).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/ai/status", a.handleAIStatus).Methods(http.MethodGet)
 	r.HandleFunc("/api/ai/triage", a.handleAITriage).Methods(http.MethodPost)
