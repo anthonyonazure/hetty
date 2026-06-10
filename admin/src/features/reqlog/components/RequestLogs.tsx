@@ -11,6 +11,7 @@ import {
   TableCellProps,
   Tooltip,
 } from "@mui/material";
+import { useApolloClient } from "@apollo/client";
 import { useRouter } from "next/router";
 import { useState } from "react";
 
@@ -21,7 +22,13 @@ import Search from "./Search";
 import RequestsTable from "lib/components/RequestsTable";
 import SplitPane from "lib/components/SplitPane";
 import useContextMenu from "lib/components/useContextMenu";
-import { useCreateSenderRequestFromHttpRequestLogMutation, useHttpRequestLogsQuery } from "lib/graphql/generated";
+import {
+  HttpRequestLogDocument,
+  HttpRequestLogQuery,
+  useCreateSenderRequestFromHttpRequestLogMutation,
+  useHttpRequestLogsQuery,
+} from "lib/graphql/generated";
+import { setHandoff } from "lib/handoff";
 
 const ActionsTableCell = styled(TableCell)<TableCellProps>(() => ({
   paddingTop: 0,
@@ -45,6 +52,7 @@ export function RequestLogs(): JSX.Element {
 
   const [copyToSenderId, setCopyToSenderId] = useState("");
   const [Menu, handleContextMenu, handleContextMenuClose] = useContextMenu();
+  const apollo = useApolloClient();
 
   const handleCopyToSenderClick = () => {
     createSenderReqFromLog({
@@ -53,6 +61,34 @@ export function RequestLogs(): JSX.Element {
       },
     });
     handleContextMenuClose();
+  };
+
+  const handleSendTo = async (tool: string, route: string) => {
+    handleContextMenuClose();
+    try {
+      const { data: logData } = await apollo.query<HttpRequestLogQuery>({
+        query: HttpRequestLogDocument,
+        variables: { id: copyToSenderId },
+        fetchPolicy: "network-only",
+      });
+      const log = logData?.httpRequestLog;
+      if (!log) {
+        return;
+      }
+      const headers = (log.headers || [])
+        .filter((h) => h.key.toLowerCase() !== "host")
+        .map((h) => `${h.key}: ${h.value}`)
+        .join("\n");
+      setHandoff(tool, {
+        method: log.method,
+        url: log.url,
+        headers,
+        body: log.body || "",
+      });
+      router.push(route);
+    } catch {
+      // ignore — handoff is best-effort
+    }
   };
 
   const [newSenderReqId, setNewSenderReqId] = useState("");
@@ -109,6 +145,9 @@ export function RequestLogs(): JSX.Element {
             <Box sx={{ width: "100%", height: "100%", overflow: "scroll" }}>
               <Menu>
                 <MenuItem onClick={handleCopyToSenderClick}>Copy request to Sender</MenuItem>
+                <MenuItem onClick={() => handleSendTo("scanner", "/scanner")}>Send to Scanner</MenuItem>
+                <MenuItem onClick={() => handleSendTo("intruder", "/intruder")}>Send to Intruder</MenuItem>
+                <MenuItem onClick={() => handleSendTo("authz", "/authz")}>Send to Authz</MenuItem>
               </Menu>
               <Snackbar
                 open={copiedReqNotifOpen}
