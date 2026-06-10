@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/gorilla/mux"
 	"github.com/oklog/ulid"
 
 	"github.com/dstotijn/hetty/pkg/annotation"
@@ -16,7 +17,88 @@ import (
 	"github.com/dstotijn/hetty/pkg/session"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/smuggle"
+	"github.com/dstotijn/hetty/pkg/template"
+	"github.com/dstotijn/hetty/pkg/wordlists"
 )
+
+// --- Templated scanner -----------------------------------------------------
+
+func (a *restAPI) handleTemplateList(w http.ResponseWriter, r *http.Request) {
+	type info struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Severity    string `json:"severity"`
+		Description string `json:"description"`
+	}
+	out := make([]info, 0, len(a.templates))
+	for _, t := range a.templates {
+		out = append(out, info{ID: t.ID, Name: t.Info.Name, Severity: t.Info.Severity, Description: t.Info.Description})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"templates": out})
+}
+
+func (a *restAPI) handleTemplateRun(w http.ResponseWriter, r *http.Request) {
+	if a.tmplEngine == nil {
+		writeErr(w, http.StatusServiceUnavailable, "templated scanner is disabled")
+		return
+	}
+	var body struct {
+		Target     string           `json:"target"`
+		TemplateID string           `json:"templateId"`
+		Template   string           `json:"template"`
+		Options    template.Options `json:"options"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Target == "" {
+		writeErr(w, http.StatusBadRequest, "target is required")
+		return
+	}
+
+	var tmpls []*template.Template
+	switch {
+	case body.Template != "":
+		t, err := template.Parse([]byte(body.Template))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		tmpls = []*template.Template{t}
+	case body.TemplateID != "":
+		for _, t := range a.templates {
+			if t.ID == body.TemplateID {
+				tmpls = append(tmpls, t)
+			}
+		}
+	default:
+		tmpls = a.templates
+	}
+
+	results, err := a.tmplEngine.Run(r.Context(), body.Target, tmpls, body.Options)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"results": results, "templatesRun": len(tmpls)})
+}
+
+// --- Wordlists -------------------------------------------------------------
+
+func (a *restAPI) handleWordlists(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{"lists": wordlists.Names()})
+}
+
+func (a *restAPI) handleWordlist(w http.ResponseWriter, r *http.Request) {
+	name := mux.Vars(r)["name"]
+	entries, ok := wordlists.Get(name)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "unknown wordlist")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"name": name, "entries": entries})
+}
 
 // resolveProfile looks up a named auth profile, returning nil when the name is
 // empty or unknown.
@@ -150,8 +232,9 @@ func (a *restAPI) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Seed    string            `json:"seed"`
-		Options discovery.Options `json:"options"`
+		Seed         string            `json:"seed"`
+		Options      discovery.Options `json:"options"`
+		WordlistName string            `json:"wordlistName"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -160,6 +243,11 @@ func (a *restAPI) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	if body.Seed == "" {
 		writeErr(w, http.StatusBadRequest, "seed is required")
 		return
+	}
+	if body.WordlistName != "" && len(body.Options.Wordlist) == 0 {
+		if entries, ok := wordlists.Get(body.WordlistName); ok {
+			body.Options.Wordlist = entries
+		}
 	}
 
 	result, err := a.discovery.Discover(r.Context(), body.Seed, body.Options)
@@ -360,8 +448,9 @@ func (a *restAPI) handleParamMiner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Target  string            `json:"target"`
-		Options paramminer.Options `json:"options"`
+		Target       string             `json:"target"`
+		Options      paramminer.Options `json:"options"`
+		WordlistName string             `json:"wordlistName"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -370,6 +459,11 @@ func (a *restAPI) handleParamMiner(w http.ResponseWriter, r *http.Request) {
 	if body.Target == "" {
 		writeErr(w, http.StatusBadRequest, "target is required")
 		return
+	}
+	if body.WordlistName != "" && len(body.Options.Wordlist) == 0 {
+		if entries, ok := wordlists.Get(body.WordlistName); ok {
+			body.Options.Wordlist = entries
+		}
 	}
 	result, err := a.paramminer.Mine(r.Context(), body.Target, body.Options)
 	if err != nil {

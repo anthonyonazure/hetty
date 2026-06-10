@@ -20,6 +20,7 @@ import (
 
 	"github.com/dstotijn/hetty/pkg/decoder"
 	"github.com/dstotijn/hetty/pkg/ratelimit"
+	"github.com/dstotijn/hetty/pkg/respfilter"
 )
 
 // AttackType selects how payloads are distributed across positions.
@@ -68,6 +69,8 @@ type Attack struct {
 	// RequestsPerSecond throttles the attack (0 = unthrottled). It is combined
 	// with any engine-wide limiter.
 	RequestsPerSecond float64 `json:"requestsPerSecond"`
+	// Filter, when set, drops results that don't match its ffuf-style rules.
+	Filter *respfilter.Filter `json:"filter,omitempty"`
 }
 
 // Result is a single attack request's outcome.
@@ -81,6 +84,7 @@ type Result struct {
 	Matches    map[string]bool `json:"matches,omitempty"`
 	Extract    string          `json:"extract,omitempty"`
 	Error      string          `json:"error,omitempty"`
+	filtered   bool
 }
 
 // Summary aggregates an attack.
@@ -171,6 +175,12 @@ func (e *Engine) Run(ctx context.Context, attack Attack) (Summary, []Result, err
 		}
 	}
 
+	if attack.Filter != nil {
+		if err := attack.Filter.Compile(); err != nil {
+			return Summary{}, nil, err
+		}
+	}
+
 	timeout := time.Duration(attack.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -200,13 +210,25 @@ func (e *Engine) Run(ctx context.Context, attack Attack) (Summary, []Result, err
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			results[i] = e.runJob(ctx, client, tmpl, jobs[i], attack.GrepMatch, grepExtract, runLimiter)
+			results[i] = e.runJob(ctx, client, tmpl, jobs[i], attack.GrepMatch, grepExtract, runLimiter, attack.Filter)
 		}()
 	}
 
 	wg.Wait()
 
 	sort.Slice(results, func(a, b int) bool { return results[a].Index < results[b].Index })
+
+	// Drop results that didn't pass the filter (the request count still reflects
+	// everything sent).
+	if attack.Filter != nil && attack.Filter.Active() {
+		kept := results[:0]
+		for _, r := range results {
+			if !r.filtered {
+				kept = append(kept, r)
+			}
+		}
+		results = kept
+	}
 
 	return Summary{
 		AttackType: attack.Type,
@@ -215,7 +237,7 @@ func (e *Engine) Run(ctx context.Context, attack Attack) (Summary, []Result, err
 	}, results, nil
 }
 
-func (e *Engine) runJob(ctx context.Context, client *http.Client, tmpl template, j job, grepMatch []string, grepExtract *regexp.Regexp, runLimiter *ratelimit.Limiter) Result {
+func (e *Engine) runJob(ctx context.Context, client *http.Client, tmpl template, j job, grepMatch []string, grepExtract *regexp.Regexp, runLimiter *ratelimit.Limiter, filter *respfilter.Filter) Result {
 	res := Result{Index: j.index, Payloads: j.payloads, Position: j.position}
 
 	method, rawURL, headers, body := tmpl.render(j.values)
@@ -275,6 +297,10 @@ func (e *Engine) runJob(ctx context.Context, client *http.Client, tmpl template,
 				res.Extract = string(sm[0])
 			}
 		}
+	}
+
+	if filter != nil && filter.Active() {
+		res.filtered = !filter.Keep(res.Status, res.Length, respfilter.Words(respBody), respfilter.Lines(respBody), respBody)
 	}
 
 	return res

@@ -29,6 +29,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/session"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
+	"github.com/dstotijn/hetty/pkg/template"
 	"github.com/dstotijn/hetty/pkg/wslog"
 )
 
@@ -48,6 +49,8 @@ type restAPI struct {
 	paramminer  *paramminer.Engine
 	wslog       *wslog.Store
 	ai          *ai.Client
+	tmplEngine  *template.Engine
+	templates   []*template.Template
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -98,6 +101,12 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/websocket/connections", a.handleWSConnections).Methods(http.MethodGet)
 	r.HandleFunc("/api/websocket/messages", a.handleWSMessages).Methods(http.MethodGet)
 	r.HandleFunc("/api/websocket", a.handleWSClear).Methods(http.MethodDelete)
+
+	r.HandleFunc("/api/wordlists", a.handleWordlists).Methods(http.MethodGet)
+	r.HandleFunc("/api/wordlists/{name}", a.handleWordlist).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/template", a.handleTemplateList).Methods(http.MethodGet)
+	r.HandleFunc("/api/template/run", a.handleTemplateRun).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/ai/status", a.handleAIStatus).Methods(http.MethodGet)
 	r.HandleFunc("/api/ai/triage", a.handleAITriage).Methods(http.MethodPost)

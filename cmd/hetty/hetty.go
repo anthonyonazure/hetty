@@ -46,6 +46,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/session"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
+	"github.com/dstotijn/hetty/pkg/template"
 	"github.com/dstotijn/hetty/pkg/wslog"
 )
 
@@ -265,6 +266,19 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		mainLogger.Info(fmt.Sprintf("AI analyst enabled (model: %v).", aiClient.Model()))
 	}
 
+	// Templated scanner: built-in templates plus any under ~/.hetty/templates.
+	tmplEngine := template.New()
+	loadedTemplates := template.Builtins()
+	if tmplDir, err := homedir.Expand("~/.hetty/templates"); err == nil {
+		if userTemplates, errs := template.LoadDir(tmplDir); len(userTemplates) > 0 {
+			loadedTemplates = append(loadedTemplates, userTemplates...)
+			mainLogger.Info(fmt.Sprintf("Loaded %d template(s) from %v.", len(userTemplates), tmplDir))
+			for _, e := range errs {
+				mainLogger.Debug("Template load error.", zap.Error(e))
+			}
+		}
+	}
+
 	// Durability: restore persisted tool state, then flush periodically and on
 	// shutdown so the site map, auth profiles, annotations, collaborator
 	// interactions and WebSocket history survive restarts.
@@ -396,13 +410,15 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		paramminer:  paramMinerEngine,
 		wslog:       wsStore,
 		ai:          aiClient,
+		tmplEngine:  tmplEngine,
+		templates:   loadedTemplates,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
 		"/api/sequencer", "/api/rules", "/api/extensions", "/api/collab", "/api/spider",
 		"/api/authz", "/api/session", "/api/discovery", "/api/sitemap", "/api/jwt",
 		"/api/annotations", "/api/paramminer", "/api/gql", "/api/smuggle", "/api/websocket",
-		"/api/ai",
+		"/api/ai", "/api/wordlists", "/api/template",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}

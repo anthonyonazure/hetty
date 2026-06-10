@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/99designs/gqlgen v0.14.0
 	github.com/chromedp/chromedp v0.7.8
+	github.com/dop251/goja v0.0.0-20260607120635-348e6bea910d
 	github.com/google/go-cmp v0.5.6
 	github.com/gorilla/mux v1.7.4
 	github.com/mitchellh/go-homedir v1.1.0
@@ -14,6 +15,7 @@ require (
 	github.com/vektah/gqlparser/v2 v2.2.0
 	go.etcd.io/bbolt v1.4.0-beta.0
 	go.uber.org/zap v1.21.0
+	gopkg.in/yaml.v2 v2.2.8
 )
 
 require (
@@ -22,7 +24,6 @@ require (
 	github.com/chromedp/sysutil v1.0.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.0-20190314233015-f79a8a8ca69d // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
-	github.com/dop251/goja v0.0.0-20260607120635-348e6bea910d // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
@@ -46,6 +47,5 @@ require (
 	golang.org/x/text v0.3.8 // indirect
 	golang.org/x/tools v0.1.12 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	gopkg.in/yaml.v2 v2.2.8 // indirect
 	howett.net/plist v0.0.0-20181124034731-591f970eefbb // indirect
 )

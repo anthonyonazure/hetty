@@ -16,6 +16,7 @@ func BuiltinPassiveChecks() []PassiveCheck {
 		infoDisclosureCheck{},
 		directoryListingCheck{},
 		jsReconCheck{},
+		secretsCheck{},
 	}
 }
 

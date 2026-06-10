@@ -17,14 +17,8 @@ import (
 	"time"
 
 	"github.com/dstotijn/hetty/pkg/ratelimit"
+	"github.com/dstotijn/hetty/pkg/respfilter"
 )
-
-// countBody reads and discards a response body (up to 8 MiB), returning the
-// byte count. The caller is responsible for closing res.Body.
-func countBody(res *http.Response) (int, error) {
-	n, err := io.Copy(io.Discard, io.LimitReader(res.Body, 8<<20))
-	return int(n), err
-}
 
 // Options configures a discovery run.
 type Options struct {
@@ -47,6 +41,8 @@ type Options struct {
 	UserAgent string `json:"userAgent"`
 	// Headers are extra request headers (e.g. an auth cookie).
 	Headers map[string]string `json:"headers"`
+	// Filter, when set, drops hits that don't match its ffuf-style rules.
+	Filter *respfilter.Filter `json:"filter,omitempty"`
 }
 
 func (o Options) excluded(status int) bool {
@@ -103,6 +99,7 @@ type probe struct {
 	length int
 	ctype  string
 	loc    string
+	body   []byte
 	err    error
 }
 
@@ -139,6 +136,13 @@ func (e *Engine) Discover(ctx context.Context, seed string, opts Options) (Resul
 		opts:    opts,
 		words:   words,
 		visited: make(map[string]struct{}),
+	}
+
+	if opts.Filter != nil {
+		if err := opts.Filter.Compile(); err != nil {
+			return Result{}, err
+		}
+		r.opts.Filter = opts.Filter
 	}
 
 	// Calibrate soft-404 at the seed directory.
@@ -280,6 +284,10 @@ func (r *runner) scanDir(ctx context.Context, dir *url.URL, depth int) []Hit {
 			if r.isSoft404(dir.Path, p) {
 				return
 			}
+			if r.opts.Filter != nil && r.opts.Filter.Active() &&
+				!r.opts.Filter.Keep(p.status, p.length, respfilter.Words(p.body), respfilter.Lines(p.body), p.body) {
+				return
+			}
 
 			hit := Hit{
 				URL:         u.String(),
@@ -341,14 +349,16 @@ func (r *runner) do(ctx context.Context, u *url.URL) probe {
 	}
 	defer res.Body.Close()
 
-	// Count body length without retaining it.
-	n, _ := countBody(res)
+	// Read the body (capped) so the length is accurate and the filter can match
+	// on size/words/lines/regex.
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 
 	return probe{
 		status: res.StatusCode,
-		length: n,
+		length: len(body),
 		ctype:  res.Header.Get("Content-Type"),
 		loc:    res.Header.Get("Location"),
+		body:   body,
 	}
 }
 
