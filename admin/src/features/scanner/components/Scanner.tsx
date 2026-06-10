@@ -285,6 +285,20 @@ export default function Scanner(): JSX.Element {
             <Button variant="outlined" color="error" onClick={handleClear} disabled={issues.length === 0}>
               Clear all
             </Button>
+            <Button
+              variant="outlined"
+              disabled={issues.length === 0}
+              onClick={() => window.open("/api/scanner/report?format=html", "_blank")}
+            >
+              Export HTML
+            </Button>
+            <Button
+              variant="outlined"
+              disabled={issues.length === 0}
+              onClick={() => window.open("/api/scanner/report?format=md", "_blank")}
+            >
+              Export MD
+            </Button>
           </Box>
           <TableContainer component={Paper} variant="outlined">
             <Table size="small">

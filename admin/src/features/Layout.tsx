@@ -2,10 +2,12 @@ import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AltRouteIcon from "@mui/icons-material/AltRoute";
 import BoltIcon from "@mui/icons-material/Bolt";
 import BugReportIcon from "@mui/icons-material/BugReport";
+import CallSplitIcon from "@mui/icons-material/CallSplit";
 import CasinoIcon from "@mui/icons-material/Casino";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
+import DeviceHubIcon from "@mui/icons-material/DeviceHub";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import FindInPageIcon from "@mui/icons-material/FindInPage";
 import FindReplaceIcon from "@mui/icons-material/FindReplace";
@@ -19,8 +21,10 @@ import MenuIcon from "@mui/icons-material/Menu";
 import PeopleIcon from "@mui/icons-material/People";
 import SendIcon from "@mui/icons-material/Send";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import TransformIcon from "@mui/icons-material/Transform";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
+import TuneIcon from "@mui/icons-material/Tune";
 import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import {
   Theme,
@@ -72,6 +76,10 @@ export enum Page {
   Sitemap,
   Jwt,
   Annotations,
+  ParamMiner,
+  GraphQL,
+  Smuggle,
+  WebSocket,
 }
 
 const drawerWidth = 240;
@@ -429,6 +437,46 @@ export function Layout({ title, page, children }: Props): JSX.Element {
                 </ListItemIcon>
               </Tooltip>
               <ListItemText primary="Annotations" />
+            </ListItemButton>
+          </Link>
+          <Link href="/paramminer" passHref>
+            <ListItemButton key="paramminer" selected={page === Page.ParamMiner}>
+              <Tooltip title="Parameter discovery">
+                <ListItemIcon>
+                  <TuneIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Param Miner" />
+            </ListItemButton>
+          </Link>
+          <Link href="/graphql" passHref>
+            <ListItemButton key="graphql" selected={page === Page.GraphQL}>
+              <Tooltip title="GraphQL">
+                <ListItemIcon>
+                  <DeviceHubIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="GraphQL" />
+            </ListItemButton>
+          </Link>
+          <Link href="/smuggle" passHref>
+            <ListItemButton key="smuggle" selected={page === Page.Smuggle}>
+              <Tooltip title="Request smuggling probe">
+                <ListItemIcon>
+                  <CallSplitIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Smuggle" />
+            </ListItemButton>
+          </Link>
+          <Link href="/websocket" passHref>
+            <ListItemButton key="websocket" selected={page === Page.WebSocket}>
+              <Tooltip title="WebSocket history">
+                <ListItemIcon>
+                  <SwapHorizIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="WebSockets" />
             </ListItemButton>
           </Link>
           <Divider />
