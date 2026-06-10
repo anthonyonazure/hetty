@@ -127,6 +127,7 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 		FlagSet: fs,
 		Subcommands: []*ffcli.Command{
 			NewCertCommand(cmd.config),
+			newScanCommand(),
 		},
 		Exec: cmd.Exec,
 		UsageFunc: func(*ffcli.Command) string {

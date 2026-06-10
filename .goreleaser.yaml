@@ -1,0 +1,57 @@
+# GoReleaser configuration for cross-platform Hetty release binaries.
+# Run `goreleaser release --clean` on a tag, or `goreleaser build --snapshot
+# --clean` for a local test build.
+#
+# The frontend must be built and embedded into cmd/hetty/admin before the Go
+# binary compiles (the //go:embed directive requires it); the before-hooks do
+# that automatically.
+version: 2
+
+project_name: hetty
+
+before:
+  hooks:
+    - sh -c "cd admin && npm ci --legacy-peer-deps && npm run export"
+    - sh -c "rm -rf cmd/hetty/admin && cp -r admin/dist cmd/hetty/admin"
+
+builds:
+  - id: hetty
+    main: ./cmd/hetty
+    binary: hetty
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: hetty
+    builds:
+      - hetty
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+      - CODE_OF_CONDUCT.md
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: anthonyonazure
+    name: hetty
+  draft: true
+
+changelog:
+  use: github
+  sort: asc

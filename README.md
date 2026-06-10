@@ -64,6 +64,8 @@ features tailored to the needs of the infosec and bug bounty community.
 - **Out-of-band (OOB) collaborator** for blind vulnerability detection, over
   HTTP and (optionally) DNS
 - **Request annotations**, **rate limiting**, and **"Send to" tool routing**
+- **Headless / CI scanning** — `hetty scan` runs a crawl-and-audit from the
+  command line and fails the build on findings at or above a chosen severity
 - **JSON/REST API** exposing every tool for automation
 
 ## Security tooling
@@ -110,6 +112,31 @@ unauthenticated variant) and classifies each as **bypassed** / **enforced** /
 managed under Auth Profiles and may carry a CSRF-token macro. Proxy-log rows
 have **Send to Scanner / Intruder / Authz** actions, and the site map organizes
 everything Hetty has seen into a per-host path tree.
+
+### Headless / CI scanning
+
+Run a scan from the command line without the proxy or web UI — useful in CI to
+gate a build on newly introduced vulnerabilities:
+
+```console
+$ hetty scan --target https://staging.example.com/ --crawl --fail-on high --format md --output report.md
+```
+
+It crawls the target (with `--crawl`), actively scans every discovered page,
+writes a report (`md`, `html` or `json`), and **exits with code 2** if any
+finding is at or above the `--fail-on` severity — so a CI job fails when a
+high/critical issue appears. `--rate` throttles requests to stay polite.
+
+### Releases
+
+Cross-platform binaries are built with [GoReleaser](https://goreleaser.com)
+(`.goreleaser.yaml`). The release hooks build and embed the admin frontend, then
+compile static binaries for Linux, macOS and Windows (amd64/arm64):
+
+```console
+$ goreleaser build --snapshot --clean   # local test build
+$ goreleaser release --clean            # tagged release
+```
 
 ### Extensions
 
