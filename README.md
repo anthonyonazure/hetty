@@ -53,6 +53,9 @@ features tailored to the needs of the infosec and bug bounty community.
 - **WebSocket interception** — the proxy parses and logs WS frames; history is
   browsable in the dashboard
 - **Findings export** — scanner issues as a standalone HTML or Markdown report
+- **Durable tool state** — the site map, auth profiles, annotations, OOB
+  collaborator interactions and WebSocket history persist to the project
+  database and survive restarts
 - **Extension ecosystem** — JavaScript extensions with request/response hooks
   and custom active/passive scan checks
 - **Out-of-band (OOB) collaborator** for blind vulnerability detection, over

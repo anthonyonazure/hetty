@@ -7,6 +7,7 @@
 package sitemap
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"sort"
@@ -237,6 +238,72 @@ func (s *Store) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.hosts = map[string]*hostAgg{}
+}
+
+// Snapshot serializes the rendered tree (which carries all aggregated state)
+// for persistence.
+func (s *Store) Snapshot() ([]byte, error) {
+	return json.Marshal(s.Tree())
+}
+
+// Restore rebuilds the internal aggregation tree from a snapshot.
+func (s *Store) Restore(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	var tree Tree
+	if err := json.Unmarshal(data, &tree); err != nil {
+		return err
+	}
+
+	techByHost := make(map[string]Tech, len(tree.Tech))
+	for _, t := range tree.Tech {
+		techByHost[t.Host] = t
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hosts = make(map[string]*hostAgg, len(tree.Hosts))
+	for _, hostNode := range tree.Hosts {
+		ha := &hostAgg{root: rebuildNode(hostNode), servers: newSet(), powered: newSet()}
+		if t, ok := techByHost[hostNode.Name]; ok {
+			for _, srv := range t.Servers {
+				ha.servers.addStr(srv)
+			}
+			for _, pw := range t.Powered {
+				ha.powered.addStr(pw)
+			}
+		}
+		s.hosts[hostNode.Name] = ha
+	}
+	return nil
+}
+
+// rebuildNode reconstructs an internal node (with its aggregation sets) from a
+// rendered Node.
+func rebuildNode(n *Node) *node {
+	nd := newNode(n.Name, n.Path)
+	nd.url = n.URL
+	nd.count = n.Count
+	for _, m := range n.Methods {
+		nd.methods.addStr(m)
+	}
+	for _, st := range n.Statuses {
+		nd.statuses.addInt(st)
+	}
+	for _, p := range n.Params {
+		nd.params.addStr(p)
+	}
+	for _, ct := range n.ContentTypes {
+		nd.ctypes.addStr(ct)
+	}
+	for _, src := range n.Sources {
+		nd.sources.addStr(src)
+	}
+	for _, c := range n.Children {
+		nd.children[c.Name] = rebuildNode(c)
+	}
+	return nd
 }
 
 func render(n *node) *Node {

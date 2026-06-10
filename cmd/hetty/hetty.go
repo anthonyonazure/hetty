@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/gorilla/mux"
@@ -248,6 +249,31 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	paramMinerEngine := paramminer.New()
 	wsStore := wslog.New()
 
+	// Durability: restore persisted tool state, then flush periodically and on
+	// shutdown so the site map, auth profiles, annotations, collaborator
+	// interactions and WebSocket history survive restarts.
+	toolStores := map[string]toolStore{
+		"sitemap":     sitemapStore,
+		"sessions":    sessionStore,
+		"annotations": annotationStore,
+		"collab":      collabServer,
+		"wslog":       wsStore,
+	}
+	restoreStores(boltDB, toolStores, mainLogger)
+	lastFlush := make(map[string][]byte)
+	flushTicker := time.NewTicker(15 * time.Second)
+	defer flushTicker.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-flushTicker.C:
+				flushStores(boltDB, toolStores, lastFlush, mainLogger)
+			}
+		}
+	}()
+
 	extDir, err := homedir.Expand("~/.hetty/extensions")
 	if err != nil {
 		cmd.config.logger.Fatal("Failed to parse extensions dir.", zap.Error(err))
@@ -418,6 +444,9 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	stop()
 
 	mainLogger.Info("Shutting down HTTP server. Press Ctrl+C to force quit.")
+
+	// Final flush of tool state before the database is closed.
+	flushStores(boltDB, toolStores, lastFlush, mainLogger)
 
 	// Note: We expect httpServer.Handler to handle timeouts, thus, we don't
 	// need a context value with deadline here.

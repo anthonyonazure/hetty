@@ -12,6 +12,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -217,4 +218,27 @@ func (s *Store) Delete(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.profiles, name)
+}
+
+// Snapshot serializes the store for persistence.
+func (s *Store) Snapshot() ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return json.Marshal(s.profiles)
+}
+
+// Restore loads profiles from a snapshot, recompiling CSRF rules.
+func (s *Store) Restore(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	var m map[string]Profile
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	for _, p := range m {
+		// Set revalidates and recompiles the (non-serialized) CSRF regex.
+		_ = s.Set(p)
+	}
+	return nil
 }

@@ -6,6 +6,7 @@
 package annotation
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"sync"
@@ -103,4 +104,26 @@ func (s *Store) Delete(targetID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.m, targetID)
+}
+
+// Snapshot serializes the store for persistence.
+func (s *Store) Snapshot() ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return json.Marshal(s.m)
+}
+
+// Restore loads annotations from a snapshot, preserving their timestamps.
+func (s *Store) Restore(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	var m map[string]Annotation
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.m = m
+	return nil
 }

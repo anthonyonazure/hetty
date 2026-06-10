@@ -4,6 +4,7 @@
 package wslog
 
 import (
+	"encoding/json"
 	"sort"
 	"sync"
 	"time"
@@ -145,4 +146,36 @@ func (s *Store) Clear() {
 	defer s.mu.Unlock()
 	s.conns = make(map[string]*Connection)
 	s.messages = nil
+}
+
+type wsSnapshot struct {
+	Seq      uint64                 `json:"seq"`
+	Conns    map[string]*Connection `json:"conns"`
+	Messages []Message              `json:"messages"`
+}
+
+// Snapshot serializes the store for persistence.
+func (s *Store) Snapshot() ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return json.Marshal(wsSnapshot{Seq: s.seq, Conns: s.conns, Messages: s.messages})
+}
+
+// Restore loads connections and messages from a snapshot.
+func (s *Store) Restore(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	var snap wsSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if snap.Conns != nil {
+		s.conns = snap.Conns
+	}
+	s.messages = snap.Messages
+	s.seq = snap.Seq
+	return nil
 }

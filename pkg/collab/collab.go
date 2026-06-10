@@ -11,6 +11,7 @@ package collab
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
@@ -143,6 +144,45 @@ func (s *Server) record(token string, r *http.Request) {
 	}
 
 	s.interactions[token] = append(s.interactions[token], interaction)
+}
+
+type collabSnapshot struct {
+	Seq          uint64                   `json:"seq"`
+	Known        []string                 `json:"known"`
+	Interactions map[string][]Interaction `json:"interactions"`
+}
+
+// Snapshot serializes recorded interactions for persistence. Config (baseURL,
+// dnsDomain) is intentionally not persisted — it is set fresh on startup.
+func (s *Server) Snapshot() ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	known := make([]string, 0, len(s.known))
+	for k := range s.known {
+		known = append(known, k)
+	}
+	return json.Marshal(collabSnapshot{Seq: s.seq, Known: known, Interactions: s.interactions})
+}
+
+// Restore loads recorded interactions from a snapshot.
+func (s *Server) Restore(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	var snap collabSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if snap.Interactions != nil {
+		s.interactions = snap.Interactions
+	}
+	for _, k := range snap.Known {
+		s.known[k] = struct{}{}
+	}
+	s.seq = snap.Seq
+	return nil
 }
 
 func firstSegment(path string) string {
