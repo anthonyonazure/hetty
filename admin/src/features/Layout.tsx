@@ -27,6 +27,7 @@ import RuleIcon from "@mui/icons-material/Rule";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import SyncAltIcon from "@mui/icons-material/SyncAlt";
+import TrackChangesIcon from "@mui/icons-material/TrackChanges";
 import TransformIcon from "@mui/icons-material/Transform";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import TuneIcon from "@mui/icons-material/Tune";
@@ -91,6 +92,7 @@ export enum Page {
   Macros,
   PoC,
   WSRepeater,
+  AttackSurface,
 }
 
 const drawerWidth = 240;
@@ -488,6 +490,16 @@ export function Layout({ title, page, children }: Props): JSX.Element {
                 </ListItemIcon>
               </Tooltip>
               <ListItemText primary="WebSockets" />
+            </ListItemButton>
+          </Link>
+          <Link href="/asm" passHref>
+            <ListItemButton key="asm" selected={page === Page.AttackSurface}>
+              <Tooltip title="Attack surface (Sn1per-style sweeps)">
+                <ListItemIcon>
+                  <TrackChangesIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Attack Surface" />
             </ListItemButton>
           </Link>
           <Link href="/recon" passHref>
