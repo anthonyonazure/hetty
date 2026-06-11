@@ -49,6 +49,17 @@ func New(cfg Config) *Client {
 // Enabled reports whether an RPC endpoint is configured.
 func (c *Client) Enabled() bool { return c != nil && c.url != "" }
 
+// LoggedIn reports whether the client holds a session token.
+func (c *Client) LoggedIn() bool { return c != nil && c.token != "" }
+
+// EnsureLogin authenticates only if not already logged in.
+func (c *Client) EnsureLogin(ctx context.Context) error {
+	if c.LoggedIn() {
+		return nil
+	}
+	return c.Login(ctx)
+}
+
 // Login authenticates and stores the session token.
 func (c *Client) Login(ctx context.Context) error {
 	if !c.Enabled() {

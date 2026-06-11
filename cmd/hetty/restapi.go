@@ -13,6 +13,7 @@ import (
 
 	"github.com/dstotijn/hetty/pkg/ai"
 	"github.com/dstotijn/hetty/pkg/annotation"
+	"github.com/dstotijn/hetty/pkg/asm"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/collab"
@@ -21,6 +22,8 @@ import (
 	"github.com/dstotijn/hetty/pkg/discovery"
 	"github.com/dstotijn/hetty/pkg/ext"
 	"github.com/dstotijn/hetty/pkg/intruder"
+	"github.com/dstotijn/hetty/pkg/msf"
+	"github.com/dstotijn/hetty/pkg/osint"
 	"github.com/dstotijn/hetty/pkg/paramminer"
 	"github.com/dstotijn/hetty/pkg/proj"
 	"github.com/dstotijn/hetty/pkg/recon"
@@ -59,6 +62,10 @@ type restAPI struct {
 	macros      *sessionflow.Store
 	macroEngine *sessionflow.Engine
 	upstream    string
+	asmStore    *asm.Store
+	asmEngine   *asm.Engine
+	shodan      *osint.Client
+	msf         *msf.Client
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -102,6 +109,19 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/wsrepeater", a.handleWSRepeater).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/settings", a.handleSettings).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/portscan", a.handlePortScan).Methods(http.MethodPost)
+	r.HandleFunc("/api/tlsscan", a.handleTLSScan).Methods(http.MethodPost)
+	r.HandleFunc("/api/wafdetect", a.handleWAFDetect).Methods(http.MethodPost)
+	r.HandleFunc("/api/screenshot", a.handleScreenshot).Methods(http.MethodPost)
+	r.HandleFunc("/api/osint/shodan", a.handleShodan).Methods(http.MethodPost)
+	r.HandleFunc("/api/msf/status", a.handleMSFStatus).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/asm/workspaces", a.handleASMList).Methods(http.MethodGet)
+	r.HandleFunc("/api/asm/workspaces", a.handleASMSet).Methods(http.MethodPut)
+	r.HandleFunc("/api/asm/workspaces", a.handleASMDelete).Methods(http.MethodDelete)
+	r.HandleFunc("/api/asm/workspace", a.handleASMGet).Methods(http.MethodGet)
+	r.HandleFunc("/api/asm/run", a.handleASMRun).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/collab/token", a.handleCollabToken).Methods(http.MethodPost)
 	r.HandleFunc("/api/collab/interactions", a.handleCollabInteractions).Methods(http.MethodGet)

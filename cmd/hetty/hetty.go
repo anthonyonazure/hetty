@@ -27,6 +27,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/ai"
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/api"
+	"github.com/dstotijn/hetty/pkg/asm"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/chrome"
@@ -35,6 +36,8 @@ import (
 	"github.com/dstotijn/hetty/pkg/discovery"
 	"github.com/dstotijn/hetty/pkg/ext"
 	"github.com/dstotijn/hetty/pkg/intruder"
+	"github.com/dstotijn/hetty/pkg/msf"
+	"github.com/dstotijn/hetty/pkg/osint"
 	"github.com/dstotijn/hetty/pkg/paramminer"
 	"github.com/dstotijn/hetty/pkg/proj"
 	"github.com/dstotijn/hetty/pkg/proxy"
@@ -98,10 +101,15 @@ type HettyCommand struct {
 	version   bool
 	dnsAddr   string
 	dnsDomain string
-	rate      float64
-	aiKey     string
-	aiModel   string
-	upstream  string
+	rate        float64
+	aiKey       string
+	aiModel     string
+	upstream    string
+	shodanKey   string
+	msfURL      string
+	msfUser     string
+	msfPass     string
+	msfInsecure bool
 }
 
 func NewHettyCommand() (*ffcli.Command, *Config) {
@@ -127,6 +135,11 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 	fs.StringVar(&cmd.aiModel, "ai-model", "", "Model for the AI analyst (default: claude-opus-4-8).")
 	fs.StringVar(&cmd.upstream, "upstream-proxy", "",
 		"Route outbound traffic through an upstream proxy (http://, https:// or socks5:// URL). Disabled when empty.")
+	fs.StringVar(&cmd.shodanKey, "shodan-key", "", "Shodan API key for OSINT host lookups. Falls back to SHODAN_API_KEY.")
+	fs.StringVar(&cmd.msfURL, "msf-url", "", "Metasploit RPC endpoint for auto-exploitation, e.g. https://127.0.0.1:55553/api/. Disabled when empty.")
+	fs.StringVar(&cmd.msfUser, "msf-user", "msf", "Metasploit RPC username.")
+	fs.StringVar(&cmd.msfPass, "msf-pass", "", "Metasploit RPC password.")
+	fs.BoolVar(&cmd.msfInsecure, "msf-insecure", true, "Skip TLS verification for the Metasploit RPC endpoint (self-signed by default).")
 
 	cmd.config.RegisterFlags(fs)
 
@@ -137,6 +150,7 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 			NewCertCommand(cmd.config),
 			newScanCommand(),
 			newMCPCommand(),
+			newSweepCommand(),
 		},
 		Exec: cmd.Exec,
 		UsageFunc: func(*ffcli.Command) string {
@@ -292,6 +306,20 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		macroEngine.SetTransport(proxyTransport(upstreamURL))
 	}
 
+	// Attack-surface management (Sn1per-style): shared recon engine, OSINT,
+	// optional Metasploit, and the scan-mode orchestrator.
+	reconEngine := recon.New()
+	shodanKey := cmd.shodanKey
+	if shodanKey == "" {
+		shodanKey = os.Getenv("SHODAN_API_KEY")
+	}
+	shodanClient := osint.New(shodanKey)
+	msfClient := msf.New(msf.Config{URL: cmd.msfURL, User: cmd.msfUser, Pass: cmd.msfPass, Insecure: cmd.msfInsecure})
+	if msfClient.Enabled() {
+		mainLogger.Info("Metasploit auto-exploitation (NUKE) enabled.")
+	}
+	asmStore := asm.NewStore()
+
 	// AI analyst (optional). Key from flag, falling back to the environment.
 	aiKey := cmd.aiKey
 	if aiKey == "" {
@@ -326,6 +354,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"wslog":       wsStore,
 		"ext":         extStore,
 		"macros":      macroStore,
+		"asm":         asmStore,
 	}
 	restoreStores(boltDB, toolStores, mainLogger)
 	lastFlush := make(map[string][]byte)
@@ -437,6 +466,9 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		SenderService:     senderService,
 	}, gqlEndpoint))
 
+	// Scan-mode orchestrator binds the recon/scan/template/MSF engines.
+	asmEngine := asm.New(newASMToolbox(reconEngine, scanService, tmplEngine, loadedTemplates, msfClient))
+
 	// REST API for the new tooling.
 	toolsAPI := (&restAPI{
 		scanner:     scanService,
@@ -456,11 +488,15 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		ai:          aiClient,
 		tmplEngine:  tmplEngine,
 		templates:   loadedTemplates,
-		recon:       recon.New(),
+		recon:       reconEngine,
 		browser:     browser.New(),
 		macros:      macroStore,
 		macroEngine: macroEngine,
 		upstream:    cmd.upstream,
+		asmStore:    asmStore,
+		asmEngine:   asmEngine,
+		shodan:      shodanClient,
+		msf:         msfClient,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
@@ -469,6 +505,8 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"/api/annotations", "/api/paramminer", "/api/gql", "/api/smuggle", "/api/websocket",
 		"/api/ai", "/api/wordlists", "/api/template", "/api/recon", "/api/browser",
 		"/api/macros", "/api/poc", "/api/wsrepeater", "/api/settings",
+		"/api/portscan", "/api/tlsscan", "/api/wafdetect", "/api/screenshot",
+		"/api/osint", "/api/msf", "/api/asm",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}
