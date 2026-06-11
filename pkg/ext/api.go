@@ -36,10 +36,18 @@ type Extension struct {
 	resHooks      []goja.Callable
 	activeChecks  []scan.ActiveCheck
 	passiveChecks []scan.PassiveCheck
+	actions       []extAction
 
 	// curReq is the request being processed during a hook, attached to issues
 	// raised via hetty.raiseIssue().
 	curReq *scan.RequestTemplate
+}
+
+// extAction is a send-to/context action registered via hetty.registerAction.
+type extAction struct {
+	id   string
+	name string
+	fn   goja.Callable
 }
 
 func (ext *Extension) info() Info {
@@ -128,6 +136,108 @@ func installHostAPI(e *Engine, ext *Extension) {
 		ext.registerPassiveCheck(call)
 		return goja.Undefined()
 	})
+
+	_ = hetty.Set("registerAction", func(call goja.FunctionCall) goja.Value {
+		ext.registerAction(call)
+		return goja.Undefined()
+	})
+
+	_ = hetty.Set("registerPayloadProcessor", func(call goja.FunctionCall) goja.Value {
+		ext.registerPayloadProcessor(e, call)
+		return goja.Undefined()
+	})
+
+	_ = hetty.Set("registerPayloadGenerator", func(call goja.FunctionCall) goja.Value {
+		ext.registerPayloadGenerator(e, call)
+		return goja.Undefined()
+	})
+
+	// hetty.store — persisted, per-extension key/value storage.
+	if e.store != nil {
+		ns := ext.name // stable namespace = file name, captured before hetty.meta() runs
+		store := vm.NewObject()
+		_ = store.Set("get", func(call goja.FunctionCall) goja.Value {
+			if v, ok := e.store.Get(ns, call.Argument(0).String()); ok {
+				return vm.ToValue(v)
+			}
+			return goja.Null()
+		})
+		_ = store.Set("set", func(call goja.FunctionCall) goja.Value {
+			e.store.Set(ns, call.Argument(0).String(), call.Argument(1).String())
+			return goja.Undefined()
+		})
+		_ = store.Set("delete", func(call goja.FunctionCall) goja.Value {
+			e.store.Delete(ns, call.Argument(0).String())
+			return goja.Undefined()
+		})
+		_ = store.Set("keys", func(goja.FunctionCall) goja.Value {
+			return vm.ToValue(e.store.Keys(ns))
+		})
+		_ = hetty.Set("store", store)
+	}
+
+	// hetty.history({limit, host, method}) — read proxy history.
+	_ = hetty.Set("history", func(call goja.FunctionCall) goja.Value {
+		if e.history == nil {
+			return vm.ToValue([]interface{}{})
+		}
+		limit, host, method := 100, "", ""
+		if o := optObject(vm, call.Argument(0)); o != nil {
+			if n := o.Get("limit"); n != nil && !goja.IsUndefined(n) {
+				limit = int(n.ToInteger())
+			}
+			host = getString(o, "host")
+			method = getString(o, "method")
+		}
+		out := make([]map[string]interface{}, 0)
+		for _, it := range e.history.Recent(limit) {
+			if host != "" && !strings.Contains(it.URL, host) {
+				continue
+			}
+			if method != "" && !strings.EqualFold(it.Method, method) {
+				continue
+			}
+			out = append(out, map[string]interface{}{
+				"method": it.Method, "url": it.URL, "status": it.Status,
+				"contentType": it.ContentType, "length": it.Length,
+			})
+		}
+		return vm.ToValue(out)
+	})
+
+	// hetty.sitemap() — read the discovered sitemap.
+	_ = hetty.Set("sitemap", func(goja.FunctionCall) goja.Value {
+		if e.sitemap == nil {
+			return vm.ToValue([]interface{}{})
+		}
+		out := make([]map[string]interface{}, 0)
+		for _, it := range e.sitemap.Entries() {
+			out = append(out, map[string]interface{}{
+				"url": it.URL, "methods": it.Methods, "statuses": it.Statuses, "params": it.Params,
+			})
+		}
+		return vm.ToValue(out)
+	})
+
+	// hetty.collab — OOB collaborator.
+	if e.collab != nil {
+		collab := vm.NewObject()
+		_ = collab.Set("generate", func(goja.FunctionCall) goja.Value {
+			token, url := e.collab.NewToken()
+			return vm.ToValue(map[string]interface{}{"token": token, "url": url})
+		})
+		_ = collab.Set("interactions", func(call goja.FunctionCall) goja.Value {
+			out := make([]map[string]interface{}, 0)
+			for _, in := range e.collab.Interactions(call.Argument(0).String()) {
+				out = append(out, map[string]interface{}{
+					"protocol": in.Protocol, "remoteAddr": in.RemoteAddr,
+					"method": in.Method, "path": in.Path, "time": in.Time,
+				})
+			}
+			return vm.ToValue(out)
+		})
+		_ = hetty.Set("collab", collab)
+	}
 
 	_ = vm.Set("hetty", hetty)
 
@@ -372,6 +482,115 @@ func (ext *Extension) registerPassiveCheck(call goja.FunctionCall) {
 	}
 
 	ext.passiveChecks = append(ext.passiveChecks, check)
+}
+
+// optObject coerces an optional argument to an object, or nil if absent.
+func optObject(vm *goja.Runtime, v goja.Value) *goja.Object {
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return nil
+	}
+	return v.ToObject(vm)
+}
+
+func (ext *Extension) registerAction(call goja.FunctionCall) {
+	vm := ext.vm
+	obj := call.Argument(0).ToObject(vm)
+	if obj == nil {
+		panic(vm.NewTypeError("registerAction: argument must be an object"))
+	}
+	fn, ok := goja.AssertFunction(obj.Get("run"))
+	if !ok {
+		panic(vm.NewTypeError("registerAction: 'run' must be a function"))
+	}
+	id := getStringDefault(obj, "id", "ext-action")
+	ext.actions = append(ext.actions, extAction{
+		id:   id,
+		name: getStringDefault(obj, "name", id),
+		fn:   fn,
+	})
+}
+
+func (ext *Extension) registerPayloadProcessor(e *Engine, call goja.FunctionCall) {
+	vm := ext.vm
+	obj := call.Argument(0).ToObject(vm)
+	if obj == nil {
+		panic(vm.NewTypeError("registerPayloadProcessor: argument must be an object"))
+	}
+	fn, ok := goja.AssertFunction(obj.Get("process"))
+	if !ok {
+		panic(vm.NewTypeError("registerPayloadProcessor: 'process' must be a function"))
+	}
+	if e.intruder == nil {
+		return
+	}
+	id := getStringDefault(obj, "id", "ext-processor")
+	fullID := "ext:" + ext.name + ":" + id
+	e.intruder.RegisterProcessor(fullID, func(payload string) (string, error) {
+		ext.mu.Lock()
+		defer ext.mu.Unlock()
+		ret, err := fn(goja.Undefined(), vm.ToValue(payload))
+		if err != nil {
+			return "", err
+		}
+		return ret.String(), nil
+	})
+}
+
+func (ext *Extension) registerPayloadGenerator(e *Engine, call goja.FunctionCall) {
+	vm := ext.vm
+	obj := call.Argument(0).ToObject(vm)
+	if obj == nil {
+		panic(vm.NewTypeError("registerPayloadGenerator: argument must be an object"))
+	}
+	fn, ok := goja.AssertFunction(obj.Get("generate"))
+	if !ok {
+		panic(vm.NewTypeError("registerPayloadGenerator: 'generate' must be a function"))
+	}
+	if e.intruder == nil {
+		return
+	}
+	id := getStringDefault(obj, "id", "ext-generator")
+	fullID := "ext:" + ext.name + ":" + id
+	e.intruder.RegisterGenerator(fullID, func() ([]string, error) {
+		ext.mu.Lock()
+		defer ext.mu.Unlock()
+		ret, err := fn(goja.Undefined())
+		if err != nil {
+			return nil, err
+		}
+		return exportStringSlice(ret), nil
+	})
+}
+
+func (ext *Extension) runAction(a extAction, req ActionRequest) (res ActionResult, err error) {
+	ext.mu.Lock()
+	defer ext.mu.Unlock()
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("ext: action %q panicked: %v", a.id, r)
+		}
+	}()
+
+	vm := ext.vm
+	obj := vm.NewObject()
+	_ = obj.Set("method", req.Method)
+	_ = obj.Set("url", req.URL)
+	_ = obj.Set("body", req.Body)
+	h := vm.NewObject()
+	for k, v := range req.Headers {
+		_ = h.Set(k, v)
+	}
+	_ = obj.Set("headers", h)
+
+	ret, e2 := a.fn(goja.Undefined(), obj)
+	if e2 != nil {
+		return ActionResult{}, e2
+	}
+	if ret != nil && !goja.IsUndefined(ret) && !goja.IsNull(ret) {
+		res.Output = ret.String()
+	}
+	return res, nil
 }
 
 type jsActiveCheck struct {

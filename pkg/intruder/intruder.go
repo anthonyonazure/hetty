@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -98,17 +99,101 @@ type Summary struct {
 type Engine struct {
 	newClient func(timeout time.Duration, redirects bool) *http.Client
 	limiter   *ratelimit.Limiter
+
+	mu         sync.RWMutex
+	processors map[string]func(string) (string, error)
+	generators map[string]func() ([]string, error)
 }
 
 // NewEngine returns an Intruder engine.
 func NewEngine() *Engine {
-	return &Engine{newClient: defaultClient}
+	return &Engine{
+		newClient:  defaultClient,
+		processors: map[string]func(string) (string, error){},
+		generators: map[string]func() ([]string, error){},
+	}
+}
+
+// RegisterProcessor adds a named custom payload processor. When an attack lists
+// the id in Attack.Processors, fn transforms each payload before it is sent.
+// Used by the extension engine to expose JS payload processors.
+func (e *Engine) RegisterProcessor(id string, fn func(string) (string, error)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.processors[id] = fn
+}
+
+// RegisterGenerator adds a named custom payload generator. A payload-set entry
+// of the form "@gen:<id>" is expanded into the generator's output before the
+// attack runs.
+func (e *Engine) RegisterGenerator(id string, fn func() ([]string, error)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.generators[id] = fn
+}
+
+// expandGenerators replaces any "@gen:<id>" payload-set entries with the
+// output of the registered generator.
+func (e *Engine) expandGenerators(sets [][]string) ([][]string, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if len(e.generators) == 0 {
+		return sets, nil
+	}
+
+	out := make([][]string, len(sets))
+	for i, set := range sets {
+		var expanded []string
+		for _, p := range set {
+			if !strings.HasPrefix(p, "@gen:") {
+				expanded = append(expanded, p)
+				continue
+			}
+			id := strings.TrimPrefix(p, "@gen:")
+			gen, ok := e.generators[id]
+			if !ok {
+				return nil, fmt.Errorf("intruder: unknown payload generator %q", id)
+			}
+			vals, err := gen()
+			if err != nil {
+				return nil, fmt.Errorf("intruder: generator %q: %w", id, err)
+			}
+			expanded = append(expanded, vals...)
+		}
+		out[i] = expanded
+	}
+	return out, nil
 }
 
 // SetLimiter installs an engine-wide rate limiter (e.g. a global politeness
 // cap). It is applied in addition to any per-attack rate.
 func (e *Engine) SetLimiter(l *ratelimit.Limiter) {
 	e.limiter = l
+}
+
+// SetProxyURL routes all attack traffic through an upstream HTTP/HTTPS/SOCKS5
+// proxy. Pass nil to reset to the default (environment) proxy behavior.
+func (e *Engine) SetProxyURL(u *url.URL) {
+	if u == nil {
+		e.newClient = defaultClient
+		return
+	}
+	e.newClient = func(timeout time.Duration, redirects bool) *http.Client {
+		transport := &http.Transport{
+			Proxy:               http.ProxyURL(u),
+			DialContext:         (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			MaxIdleConns:        100,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+			//nolint:gosec
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		c := &http.Client{Transport: transport, Timeout: timeout}
+		if !redirects {
+			c.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+		}
+		return c
+	}
 }
 
 func defaultClient(timeout time.Duration, redirects bool) *http.Client {
@@ -153,7 +238,12 @@ func (e *Engine) Run(ctx context.Context, attack Attack) (Summary, []Result, err
 		return Summary{}, nil, fmt.Errorf("intruder: no payload positions found (mark them with %q)", marker)
 	}
 
-	sets, err := processSets(attack.PayloadSets, attack.Processors)
+	sets, err := e.expandGenerators(attack.PayloadSets)
+	if err != nil {
+		return Summary{}, nil, err
+	}
+
+	sets, err = e.processSets(sets, attack.Processors)
 	if err != nil {
 		return Summary{}, nil, err
 	}
@@ -503,7 +593,7 @@ func clusterBomb(n int, originals []string, sets [][]string) []job {
 
 // --- Payload processing ----------------------------------------------------
 
-func processSets(sets [][]string, processors []string) ([][]string, error) {
+func (e *Engine) processSets(sets [][]string, processors []string) ([][]string, error) {
 	if len(processors) == 0 {
 		return sets, nil
 	}
@@ -512,7 +602,7 @@ func processSets(sets [][]string, processors []string) ([][]string, error) {
 	for i, set := range sets {
 		processed := make([]string, len(set))
 		for j, p := range set {
-			v, err := applyProcessors(p, processors)
+			v, err := e.applyProcessors(p, processors)
 			if err != nil {
 				return nil, err
 			}
@@ -524,7 +614,7 @@ func processSets(sets [][]string, processors []string) ([][]string, error) {
 	return out, nil
 }
 
-func applyProcessors(payload string, processors []string) (string, error) {
+func (e *Engine) applyProcessors(payload string, processors []string) (string, error) {
 	cur := payload
 	for _, proc := range processors {
 		switch {
@@ -546,7 +636,17 @@ func applyProcessors(payload string, processors []string) (string, error) {
 		case strings.HasPrefix(proc, "suffix:"):
 			cur += strings.TrimPrefix(proc, "suffix:")
 		default:
-			return "", fmt.Errorf("intruder: unknown payload processor %q", proc)
+			e.mu.RLock()
+			fn, ok := e.processors[proc]
+			e.mu.RUnlock()
+			if !ok {
+				return "", fmt.Errorf("intruder: unknown payload processor %q", proc)
+			}
+			v, err := fn(cur)
+			if err != nil {
+				return "", fmt.Errorf("intruder: processor %q: %w", proc, err)
+			}
+			cur = v
 		}
 	}
 

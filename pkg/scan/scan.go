@@ -433,10 +433,11 @@ func (svc *Service) ScanRequests(ctx context.Context, projectID ulid.ULID, bases
 		points := BuildInsertionPoints(base, svc.opts)
 		activeChecks := svc.registry.ActiveChecks()
 
-		for _, point := range points {
+		for i, point := range points {
 			for _, check := range activeChecks {
 				point := point
 				check := check
+				first := i == 0
 				tasks++
 
 				wg.Add(1)
@@ -451,6 +452,7 @@ func (svc *Service) ScanRequests(ctx context.Context, projectID ulid.ULID, bases
 						Base:     base,
 						Point:    point,
 						Baseline: baseline,
+						First:    first,
 						OOB:      svc.oob,
 						svc:      svc,
 					}

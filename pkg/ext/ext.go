@@ -35,6 +35,17 @@ type Config struct {
 	Logger log.Logger
 	// HTTPClient is used by hetty.send(). Defaults to http.DefaultClient.
 	HTTPClient *http.Client
+
+	// Store backs hetty.store (persistence). May be nil to disable it.
+	Store *Store
+	// History backs hetty.history(). May be nil.
+	History HistoryProvider
+	// Sitemap backs hetty.sitemap(). May be nil.
+	Sitemap SitemapProvider
+	// Collab backs hetty.collab. May be nil.
+	Collab CollabProvider
+	// Intruder backs hetty.registerPayloadGenerator/Processor. May be nil.
+	Intruder PayloadRegistry
 }
 
 // Engine loads and manages JavaScript extensions.
@@ -43,6 +54,12 @@ type Engine struct {
 	scan       *scan.Service
 	logger     log.Logger
 	httpClient *http.Client
+
+	store    *Store
+	history  HistoryProvider
+	sitemap  SitemapProvider
+	collab   CollabProvider
+	intruder PayloadRegistry
 
 	mu   sync.RWMutex
 	exts []*Extension
@@ -55,6 +72,11 @@ func NewEngine(cfg Config) *Engine {
 		scan:       cfg.ScanService,
 		logger:     cfg.Logger,
 		httpClient: cfg.HTTPClient,
+		store:      cfg.Store,
+		history:    cfg.History,
+		sitemap:    cfg.Sitemap,
+		collab:     cfg.Collab,
+		intruder:   cfg.Intruder,
 	}
 
 	if e.logger == nil {
@@ -66,6 +88,36 @@ func NewEngine(cfg Config) *Engine {
 	}
 
 	return e
+}
+
+// Actions returns all send-to/context actions registered by loaded extensions.
+func (e *Engine) Actions() []ActionInfo {
+	exts := e.snapshot()
+	var out []ActionInfo
+	for _, ext := range exts {
+		for _, a := range ext.actions {
+			out = append(out, ActionInfo{
+				ID:   "ext:" + ext.name + ":" + a.id,
+				Name: a.name,
+				Ext:  ext.name,
+			})
+		}
+	}
+	return out
+}
+
+// RunAction invokes the action with the given full id (ext:<name>:<id>),
+// passing it the request and returning its textual result.
+func (e *Engine) RunAction(fullID string, req ActionRequest) (ActionResult, error) {
+	exts := e.snapshot()
+	for _, ext := range exts {
+		for _, a := range ext.actions {
+			if "ext:"+ext.name+":"+a.id == fullID {
+				return ext.runAction(a, req)
+			}
+		}
+	}
+	return ActionResult{}, fmt.Errorf("ext: unknown action %q", fullID)
 }
 
 // Info is a serializable summary of a loaded extension.

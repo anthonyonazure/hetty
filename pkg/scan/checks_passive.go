@@ -17,6 +17,10 @@ func BuiltinPassiveChecks() []PassiveCheck {
 		directoryListingCheck{},
 		jsReconCheck{},
 		secretsCheck{},
+		corsMisconfigCheck{},
+		mixedContentFormCheck{},
+		cacheableSensitiveCheck{},
+		graphqlIntrospectionCheck{},
 	}
 }
 

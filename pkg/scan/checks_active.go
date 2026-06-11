@@ -19,6 +19,7 @@ func BuiltinActiveChecks() []ActiveCheck {
 		sstiCheck{},
 		crlfInjectionCheck{},
 		oobInjectionCheck{},
+		hostHeaderInjectionCheck{},
 	}
 }
 

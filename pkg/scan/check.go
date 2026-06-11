@@ -33,6 +33,11 @@ type ScanContext struct {
 	Point    InsertionPoint
 	Baseline *Response
 
+	// First is true when Point is the first insertion point for this request.
+	// Per-request checks (e.g. host-header injection) gate on it to run once
+	// instead of once per insertion point.
+	First bool
+
 	OOB OOBClient
 
 	svc *Service

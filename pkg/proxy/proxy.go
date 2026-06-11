@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"strings"
 	"time"
 
@@ -44,6 +45,11 @@ type Config struct {
 	CACert *x509.Certificate
 	CAKey  crypto.PrivateKey
 	Logger log.Logger
+
+	// UpstreamProxy, when set, routes all proxied traffic through an upstream
+	// HTTP, HTTPS, or SOCKS5 proxy (http://, https://, or socks5:// URL).
+	// When nil, the standard environment proxy (HTTP_PROXY/…) is used.
+	UpstreamProxy *url.URL
 }
 
 // NewProxy returns a new Proxy.
@@ -64,9 +70,14 @@ func NewProxy(cfg Config) (*Proxy, error) {
 		p.logger = log.NewNopLogger()
 	}
 
+	proxyFunc := http.ProxyFromEnvironment
+	if cfg.UpstreamProxy != nil {
+		proxyFunc = http.ProxyURL(cfg.UpstreamProxy)
+	}
+
 	transport := &http.Transport{
 		// Values taken from `http.DefaultTransport`.
-		Proxy: http.ProxyFromEnvironment,
+		Proxy: proxyFunc,
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
