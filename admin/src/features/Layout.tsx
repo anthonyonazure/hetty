@@ -19,12 +19,14 @@ import HomeIcon from "@mui/icons-material/Home";
 import HttpsIcon from "@mui/icons-material/Https";
 import LabelIcon from "@mui/icons-material/Label";
 import LocationSearchingIcon from "@mui/icons-material/LocationSearching";
+import LoginIcon from "@mui/icons-material/Login";
 import MenuIcon from "@mui/icons-material/Menu";
 import PeopleIcon from "@mui/icons-material/People";
 import SendIcon from "@mui/icons-material/Send";
 import RuleIcon from "@mui/icons-material/Rule";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import SyncAltIcon from "@mui/icons-material/SyncAlt";
 import TransformIcon from "@mui/icons-material/Transform";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import TuneIcon from "@mui/icons-material/Tune";
@@ -86,6 +88,9 @@ export enum Page {
   AIAnalyst,
   Recon,
   Templates,
+  Macros,
+  PoC,
+  WSRepeater,
 }
 
 const drawerWidth = 240;
@@ -503,6 +508,36 @@ export function Layout({ title, page, children }: Props): JSX.Element {
                 </ListItemIcon>
               </Tooltip>
               <ListItemText primary="Templates" />
+            </ListItemButton>
+          </Link>
+          <Link href="/macros" passHref>
+            <ListItemButton key="macros" selected={page === Page.Macros}>
+              <Tooltip title="Session macros">
+                <ListItemIcon>
+                  <LoginIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Macros" />
+            </ListItemButton>
+          </Link>
+          <Link href="/wsrepeater" passHref>
+            <ListItemButton key="wsrepeater" selected={page === Page.WSRepeater}>
+              <Tooltip title="WebSocket repeater">
+                <ListItemIcon>
+                  <SyncAltIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="WS Repeater" />
+            </ListItemButton>
+          </Link>
+          <Link href="/poc" passHref>
+            <ListItemButton key="poc" selected={page === Page.PoC}>
+              <Tooltip title="PoC generators (CSRF / clickjacking)">
+                <ListItemIcon>
+                  <BugReportIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="PoC Generators" />
             </ListItemButton>
           </Link>
           <Link href="/ai" passHref>
