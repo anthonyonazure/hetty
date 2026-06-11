@@ -35,6 +35,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/db/bolt"
 	"github.com/dstotijn/hetty/pkg/discovery"
 	"github.com/dstotijn/hetty/pkg/ext"
+	"github.com/dstotijn/hetty/pkg/exttool"
 	"github.com/dstotijn/hetty/pkg/intruder"
 	"github.com/dstotijn/hetty/pkg/msf"
 	"github.com/dstotijn/hetty/pkg/osint"
@@ -319,6 +320,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		mainLogger.Info("Metasploit auto-exploitation (NUKE) enabled.")
 	}
 	asmStore := asm.NewStore()
+	extToolRunner := exttool.NewRunner(exttool.DefaultCatalog(), 0)
 
 	// AI analyst (optional). Key from flag, falling back to the environment.
 	aiKey := cmd.aiKey
@@ -497,6 +499,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		asmEngine:   asmEngine,
 		shodan:      shodanClient,
 		msf:         msfClient,
+		exttools:    extToolRunner,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
@@ -506,7 +509,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"/api/ai", "/api/wordlists", "/api/template", "/api/recon", "/api/browser",
 		"/api/macros", "/api/poc", "/api/wsrepeater", "/api/settings",
 		"/api/portscan", "/api/tlsscan", "/api/wafdetect", "/api/screenshot",
-		"/api/osint", "/api/msf", "/api/asm",
+		"/api/osint", "/api/msf", "/api/asm", "/api/exttools",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}

@@ -27,6 +27,7 @@ import RuleIcon from "@mui/icons-material/Rule";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import SyncAltIcon from "@mui/icons-material/SyncAlt";
+import TerminalIcon from "@mui/icons-material/Terminal";
 import TrackChangesIcon from "@mui/icons-material/TrackChanges";
 import TransformIcon from "@mui/icons-material/Transform";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
@@ -93,6 +94,7 @@ export enum Page {
   PoC,
   WSRepeater,
   AttackSurface,
+  ExternalTools,
 }
 
 const drawerWidth = 240;
@@ -510,6 +512,16 @@ export function Layout({ title, page, children }: Props): JSX.Element {
                 </ListItemIcon>
               </Tooltip>
               <ListItemText primary="Recon" />
+            </ListItemButton>
+          </Link>
+          <Link href="/tools" passHref>
+            <ListItemButton key="exttools" selected={page === Page.ExternalTools}>
+              <Tooltip title="External tools (nmap, nikto, nuclei, ...)">
+                <ListItemIcon>
+                  <TerminalIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="External Tools" />
             </ListItemButton>
           </Link>
           <Link href="/templates" passHref>

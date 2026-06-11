@@ -21,6 +21,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/decoder"
 	"github.com/dstotijn/hetty/pkg/discovery"
 	"github.com/dstotijn/hetty/pkg/ext"
+	"github.com/dstotijn/hetty/pkg/exttool"
 	"github.com/dstotijn/hetty/pkg/intruder"
 	"github.com/dstotijn/hetty/pkg/msf"
 	"github.com/dstotijn/hetty/pkg/osint"
@@ -66,6 +67,7 @@ type restAPI struct {
 	asmEngine   *asm.Engine
 	shodan      *osint.Client
 	msf         *msf.Client
+	exttools    *exttool.Runner
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -122,6 +124,11 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/asm/workspaces", a.handleASMDelete).Methods(http.MethodDelete)
 	r.HandleFunc("/api/asm/workspace", a.handleASMGet).Methods(http.MethodGet)
 	r.HandleFunc("/api/asm/run", a.handleASMRun).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/exttools", a.handleExtToolsList).Methods(http.MethodGet)
+	r.HandleFunc("/api/exttools/run", a.handleExtToolRun).Methods(http.MethodPost)
+	r.HandleFunc("/api/exttools/job", a.handleExtToolJob).Methods(http.MethodGet)
+	r.HandleFunc("/api/exttools/stop", a.handleExtToolStop).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/collab/token", a.handleCollabToken).Methods(http.MethodPost)
 	r.HandleFunc("/api/collab/interactions", a.handleCollabInteractions).Methods(http.MethodGet)
