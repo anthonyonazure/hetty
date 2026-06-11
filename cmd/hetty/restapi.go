@@ -29,6 +29,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/scan"
 	"github.com/dstotijn/hetty/pkg/sequencer"
 	"github.com/dstotijn/hetty/pkg/session"
+	"github.com/dstotijn/hetty/pkg/sessionflow"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
 	"github.com/dstotijn/hetty/pkg/template"
@@ -55,6 +56,9 @@ type restAPI struct {
 	templates   []*template.Template
 	recon       *recon.Engine
 	browser     *browser.Crawler
+	macros      *sessionflow.Store
+	macroEngine *sessionflow.Engine
+	upstream    string
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -84,6 +88,20 @@ func (a *restAPI) Handler() http.Handler {
 
 	r.HandleFunc("/api/extensions", a.handleExtensionsList).Methods(http.MethodGet)
 	r.HandleFunc("/api/extensions/reload", a.handleExtensionsReload).Methods(http.MethodPost)
+	r.HandleFunc("/api/extensions/actions", a.handleExtActionsList).Methods(http.MethodGet)
+	r.HandleFunc("/api/extensions/actions/run", a.handleExtActionRun).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/macros", a.handleMacrosList).Methods(http.MethodGet)
+	r.HandleFunc("/api/macros", a.handleMacroSet).Methods(http.MethodPut)
+	r.HandleFunc("/api/macros", a.handleMacroDelete).Methods(http.MethodDelete)
+	r.HandleFunc("/api/macros/run", a.handleMacroRun).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/poc/csrf", a.handlePoCCSRF).Methods(http.MethodPost)
+	r.HandleFunc("/api/poc/clickjacking", a.handlePoCClickjacking).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/wsrepeater", a.handleWSRepeater).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/settings", a.handleSettings).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/collab/token", a.handleCollabToken).Methods(http.MethodPost)
 	r.HandleFunc("/api/collab/interactions", a.handleCollabInteractions).Methods(http.MethodGet)

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -46,6 +47,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/scope"
 	"github.com/dstotijn/hetty/pkg/sender"
 	"github.com/dstotijn/hetty/pkg/session"
+	"github.com/dstotijn/hetty/pkg/sessionflow"
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
 	"github.com/dstotijn/hetty/pkg/template"
@@ -99,6 +101,7 @@ type HettyCommand struct {
 	rate      float64
 	aiKey     string
 	aiModel   string
+	upstream  string
 }
 
 func NewHettyCommand() (*ffcli.Command, *Config) {
@@ -122,6 +125,8 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 	fs.Float64Var(&cmd.rate, "rate", 0, "Global request-rate cap (requests/sec) for the scanner, intruder and spider. 0 = unthrottled.")
 	fs.StringVar(&cmd.aiKey, "ai-key", "", "Anthropic API key enabling the AI analyst. Falls back to the ANTHROPIC_API_KEY env var.")
 	fs.StringVar(&cmd.aiModel, "ai-model", "", "Model for the AI analyst (default: claude-opus-4-8).")
+	fs.StringVar(&cmd.upstream, "upstream-proxy", "",
+		"Route outbound traffic through an upstream proxy (http://, https:// or socks5:// URL). Disabled when empty.")
 
 	cmd.config.RegisterFlags(fs)
 
@@ -196,6 +201,17 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 
 	scope := &scope.Scope{}
 
+	// Upstream proxy (optional): route all outbound tool traffic through an
+	// HTTP/HTTPS/SOCKS5 proxy. http.Transport handles all three schemes.
+	var upstreamURL *neturl.URL
+	if cmd.upstream != "" {
+		upstreamURL, err = neturl.Parse(cmd.upstream)
+		if err != nil {
+			cmd.config.logger.Fatal("Invalid --upstream-proxy URL.", zap.Error(err))
+		}
+		mainLogger.Info(fmt.Sprintf("Routing outbound traffic through upstream proxy %v ...", cmd.upstream))
+	}
+
 	reqLogService := reqlog.NewService(reqlog.Config{
 		Scope:      scope,
 		Repository: boltDB,
@@ -206,19 +222,30 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		Logger: cmd.config.logger.Named("intercept").Sugar(),
 	})
 
-	senderService := sender.NewService(sender.Config{
+	senderCfg := sender.Config{
 		Repository:    boltDB,
 		ReqLogService: reqLogService,
-	})
+	}
+	if upstreamURL != nil {
+		senderCfg.HTTPClient = proxyHTTPClient(upstreamURL, 30*time.Second, true)
+	}
+	senderService := sender.NewService(senderCfg)
 
-	scanService := scan.NewService(scan.Config{
+	scanCfg := scan.Config{
 		Repository: boltDB,
 		Options:    scan.DefaultOptions(),
 		Logger:     cmd.config.logger.Named("scan").Sugar(),
-	})
+	}
+	if upstreamURL != nil {
+		scanCfg.HTTPClient = proxyHTTPClient(upstreamURL, 20*time.Second, false)
+	}
+	scanService := scan.NewService(scanCfg)
 
 	rulesEngine := rules.NewEngine()
 	intruderEngine := intruder.NewEngine()
+	if upstreamURL != nil {
+		intruderEngine.SetProxyURL(upstreamURL)
+	}
 	spiderCrawler := spider.New()
 
 	// Global request-rate cap shared across the active tools (--rate).
@@ -258,6 +285,12 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	annotationStore := annotation.New()
 	paramMinerEngine := paramminer.New()
 	wsStore := wslog.New()
+	extStore := ext.NewStore()
+	macroStore := sessionflow.NewStore()
+	macroEngine := sessionflow.New()
+	if upstreamURL != nil {
+		macroEngine.SetTransport(proxyTransport(upstreamURL))
+	}
 
 	// AI analyst (optional). Key from flag, falling back to the environment.
 	aiKey := cmd.aiKey
@@ -291,6 +324,8 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"annotations": annotationStore,
 		"collab":      collabServer,
 		"wslog":       wsStore,
+		"ext":         extStore,
+		"macros":      macroStore,
 	}
 	restoreStores(boltDB, toolStores, mainLogger)
 	lastFlush := make(map[string][]byte)
@@ -315,6 +350,11 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		Dir:         extDir,
 		ScanService: scanService,
 		Logger:      cmd.config.logger.Named("ext").Sugar(),
+		Store:       extStore,
+		History:     &historyAdapter{svc: reqLogService},
+		Sitemap:     &sitemapAdapter{store: sitemapStore},
+		Collab:      &collabAdapter{srv: collabServer},
+		Intruder:    intruderEngine,
 	})
 	if _, err := extEngine.LoadAll(); err != nil {
 		mainLogger.Warn("Failed to load extensions.", zap.Error(err))
@@ -333,9 +373,10 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	}
 
 	proxy, err := proxy.NewProxy(proxy.Config{
-		CACert: caCert,
-		CAKey:  caKey,
-		Logger: cmd.config.logger.Named("proxy").Sugar(),
+		CACert:        caCert,
+		CAKey:         caKey,
+		Logger:        cmd.config.logger.Named("proxy").Sugar(),
+		UpstreamProxy: upstreamURL,
 	})
 	if err != nil {
 		cmd.config.logger.Fatal("Failed to create new proxy.", zap.Error(err))
@@ -417,6 +458,9 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		templates:   loadedTemplates,
 		recon:       recon.New(),
 		browser:     browser.New(),
+		macros:      macroStore,
+		macroEngine: macroEngine,
+		upstream:    cmd.upstream,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
@@ -424,6 +468,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"/api/authz", "/api/session", "/api/discovery", "/api/sitemap", "/api/jwt",
 		"/api/annotations", "/api/paramminer", "/api/gql", "/api/smuggle", "/api/websocket",
 		"/api/ai", "/api/wordlists", "/api/template", "/api/recon", "/api/browser",
+		"/api/macros", "/api/poc", "/api/wsrepeater", "/api/settings",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}
