@@ -216,4 +216,18 @@ var builtinTools = []Tool{
 	{Name: "wafw00f-list", Binary: "wafw00f", Category: "web", NeedsTarget: false,
 		Description: "List all WAFs wafw00f can detect.",
 		Args:        []string{"-l"}},
+
+	// --- Trivy (container/fs/repo/IaC vuln + misconfig scanner) ---
+	{Name: "trivy-image", Binary: "trivy", Category: "vuln", NeedsTarget: true,
+		Description: "Scan a container image for vulnerabilities (target = image ref).",
+		Args:        []string{"image", "{target}"}},
+	{Name: "trivy-fs", Binary: "trivy", Category: "vuln", NeedsTarget: true,
+		Description: "Scan a filesystem path for vulns + misconfigs + secrets.",
+		Args:        []string{"fs", "{target}"}},
+	{Name: "trivy-repo", Binary: "trivy", Category: "vuln", NeedsTarget: true,
+		Description: "Scan a git repository for vulns + secrets (target = repo URL).",
+		Args:        []string{"repo", "{target}"}},
+	{Name: "trivy-config", Binary: "trivy", Category: "vuln", NeedsTarget: true,
+		Description: "Scan IaC/config (Terraform, k8s, Dockerfile) for misconfigs.",
+		Args:        []string{"config", "{target}"}},
 }
