@@ -31,6 +31,9 @@ interface Config {
   accountKey?: string;
   token?: string;
   folderId?: string;
+  refreshToken?: string;
+  clientId?: string;
+  clientSecret?: string;
 }
 interface Destination {
   name: string;
@@ -164,8 +167,11 @@ export default function Storage(): JSX.Element {
           )}
           {(cfg.kind === "gdrive" || cfg.kind === "box") && (
             <>
-              {field("OAuth token", "token", "", true)}
+              {field("Access token", "token", "", true)}
               {field("Folder ID (optional)", "folderId")}
+              {field("Refresh token (optional)", "refreshToken", "keeps long-lived saves working", true)}
+              {field("Client ID (for refresh)", "clientId")}
+              {field("Client secret (for refresh)", "clientSecret", "", true)}
             </>
           )}
         </Box>

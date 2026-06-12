@@ -14,6 +14,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/ai"
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/asm"
+	"github.com/dstotijn/hetty/pkg/assetgraph"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/collab"
@@ -76,6 +77,7 @@ type restAPI struct {
 	monitorEngine *monitor.Engine
 	workflows   *workflow.Store
 	workflowEngine *workflow.Engine
+	graph       *assetgraph.Graph
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -153,6 +155,11 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/workflows", a.handleWorkflowSet).Methods(http.MethodPut)
 	r.HandleFunc("/api/workflows", a.handleWorkflowDelete).Methods(http.MethodDelete)
 	r.HandleFunc("/api/workflows/run", a.handleWorkflowRun).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/assets", a.handleAssetsList).Methods(http.MethodGet)
+	r.HandleFunc("/api/assets", a.handleAssetsClear).Methods(http.MethodDelete)
+	r.HandleFunc("/api/assets/stats", a.handleAssetsStats).Methods(http.MethodGet)
+	r.HandleFunc("/api/assets/related", a.handleAssetsRelated).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/collab/token", a.handleCollabToken).Methods(http.MethodPost)
 	r.HandleFunc("/api/collab/interactions", a.handleCollabInteractions).Methods(http.MethodGet)

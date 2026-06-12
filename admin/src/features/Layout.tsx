@@ -27,6 +27,8 @@ import RuleIcon from "@mui/icons-material/Rule";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import FilterAltIcon from "@mui/icons-material/FilterAlt";
+import HubIcon from "@mui/icons-material/Hub";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import SyncAltIcon from "@mui/icons-material/SyncAlt";
@@ -57,6 +59,8 @@ import MuiListItemButton, { ListItemButtonProps } from "@mui/material/ListItemBu
 import MuiListItemIcon, { ListItemIconProps } from "@mui/material/ListItemIcon";
 import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
+
+import CommandPalette from "lib/components/CommandPalette";
 
 import { useActiveProject } from "lib/ActiveProjectContext";
 import { useInterceptedRequests } from "lib/InterceptedRequestsContext";
@@ -102,6 +106,7 @@ export enum Page {
   Workflows,
   Storage,
   Guide,
+  Assets,
 }
 
 const drawerWidth = 240;
@@ -203,7 +208,22 @@ export function Layout({ title, page, children }: Props): JSX.Element {
   const interceptedRequests = useInterceptedRequests();
   const theme = useTheme();
   const [open, setOpen] = useState(false);
+  const [focus, setFocus] = useState(false);
   const navRef = useRef<HTMLUListElement>(null);
+
+  // Focus mode hides the specialist Burp-style tools, leaving the proxy core and
+  // the platform tools — a quick way to declutter the long sidebar. Ctrl/⌘+K
+  // (the command palette) still jumps to anything, hidden or not.
+  useEffect(() => {
+    setFocus(typeof window !== "undefined" && window.localStorage.getItem("hetty.focusMode") === "1");
+  }, []);
+  const toggleFocus = () => {
+    setFocus((f) => {
+      const next = !f;
+      if (typeof window !== "undefined") window.localStorage.setItem("hetty.focusMode", next ? "1" : "0");
+      return next;
+    });
+  };
 
   // After navigating, keep the active sidebar item in view instead of resetting
   // the scroll to the top (which hid items below the fold).
@@ -231,6 +251,7 @@ export function Layout({ title, page, children }: Props): JSX.Element {
 
   return (
     <Box sx={{ display: "flex", height: "100%" }}>
+      <CommandPalette />
       <AppBar position="fixed" open={open}>
         <Toolbar>
           <IconButton
@@ -262,6 +283,20 @@ export function Layout({ title, page, children }: Props): JSX.Element {
       </AppBar>
       <Drawer variant="permanent" open={open}>
         <DrawerHeader>
+          {open && (
+            <Tooltip title={focus ? "Show all tools" : "Focus mode: hide specialist tools"}>
+              <ListItemButton
+                onClick={toggleFocus}
+                sx={{ borderRadius: 1, flex: "0 0 auto", mr: "auto", px: 1 }}
+                selected={focus}
+              >
+                <FilterAltIcon fontSize="small" />
+                <Box component="span" sx={{ ml: 1, fontSize: 13 }}>
+                  {focus ? "Focused" : "Focus"}
+                </Box>
+              </ListItemButton>
+            </Tooltip>
+          )}
           <IconButton onClick={handleDrawerClose}>
             {theme.direction === "rtl" ? <ChevronRightIcon /> : <ChevronLeftIcon />}
           </IconButton>
@@ -321,196 +356,200 @@ export function Layout({ title, page, children }: Props): JSX.Element {
             </ListItemButton>
           </Link>
           <Divider />
-          <Link href="/scanner" passHref>
-            <ListItemButton key="scanner" disabled={!activeProject} selected={page === Page.Scanner}>
-              <Tooltip title="Scanner">
-                <ListItemIcon>
-                  <BugReportIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Scanner" />
-            </ListItemButton>
-          </Link>
-          <Link href="/spider" passHref>
-            <ListItemButton key="spider" selected={page === Page.Spider}>
-              <Tooltip title="Spider">
-                <ListItemIcon>
-                  <TravelExploreIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Spider" />
-            </ListItemButton>
-          </Link>
-          <Link href="/intruder" passHref>
-            <ListItemButton key="intruder" selected={page === Page.Intruder}>
-              <Tooltip title="Intruder">
-                <ListItemIcon>
-                  <BoltIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Intruder" />
-            </ListItemButton>
-          </Link>
-          <Link href="/decoder" passHref>
-            <ListItemButton key="decoder" selected={page === Page.Decoder}>
-              <Tooltip title="Decoder">
-                <ListItemIcon>
-                  <TransformIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Decoder" />
-            </ListItemButton>
-          </Link>
-          <Link href="/comparer" passHref>
-            <ListItemButton key="comparer" selected={page === Page.Comparer}>
-              <Tooltip title="Comparer">
-                <ListItemIcon>
-                  <CompareArrowsIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Comparer" />
-            </ListItemButton>
-          </Link>
-          <Link href="/sequencer" passHref>
-            <ListItemButton key="sequencer" selected={page === Page.Sequencer}>
-              <Tooltip title="Sequencer">
-                <ListItemIcon>
-                  <CasinoIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Sequencer" />
-            </ListItemButton>
-          </Link>
-          <Link href="/rules" passHref>
-            <ListItemButton key="rules" selected={page === Page.Rules}>
-              <Tooltip title="Match & Replace">
-                <ListItemIcon>
-                  <FindReplaceIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Match & Replace" />
-            </ListItemButton>
-          </Link>
-          <Link href="/extensions" passHref>
-            <ListItemButton key="extensions" selected={page === Page.Extensions}>
-              <Tooltip title="Extensions">
-                <ListItemIcon>
-                  <ExtensionIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Extensions" />
-            </ListItemButton>
-          </Link>
-          <Link href="/collab" passHref>
-            <ListItemButton key="collab" selected={page === Page.Collab}>
-              <Tooltip title="Collaborator">
-                <ListItemIcon>
-                  <SettingsInputAntennaIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Collaborator" />
-            </ListItemButton>
-          </Link>
-          <Link href="/authz" passHref>
-            <ListItemButton key="authz" selected={page === Page.Authz}>
-              <Tooltip title="Authorization tester">
-                <ListItemIcon>
-                  <HttpsIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Authz" />
-            </ListItemButton>
-          </Link>
-          <Link href="/sessions" passHref>
-            <ListItemButton key="sessions" selected={page === Page.Sessions}>
-              <Tooltip title="Auth profiles">
-                <ListItemIcon>
-                  <PeopleIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Auth Profiles" />
-            </ListItemButton>
-          </Link>
-          <Link href="/discovery" passHref>
-            <ListItemButton key="discovery" selected={page === Page.Discovery}>
-              <Tooltip title="Content discovery">
-                <ListItemIcon>
-                  <FindInPageIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Discovery" />
-            </ListItemButton>
-          </Link>
-          <Link href="/sitemap" passHref>
-            <ListItemButton key="sitemap" selected={page === Page.Sitemap}>
-              <Tooltip title="Site map">
-                <ListItemIcon>
-                  <AccountTreeIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Site Map" />
-            </ListItemButton>
-          </Link>
-          <Link href="/jwt" passHref>
-            <ListItemButton key="jwt" selected={page === Page.Jwt}>
-              <Tooltip title="JWT editor">
-                <ListItemIcon>
-                  <VpnKeyIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="JWT" />
-            </ListItemButton>
-          </Link>
-          <Link href="/annotations" passHref>
-            <ListItemButton key="annotations" selected={page === Page.Annotations}>
-              <Tooltip title="Annotations">
-                <ListItemIcon>
-                  <LabelIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Annotations" />
-            </ListItemButton>
-          </Link>
-          <Link href="/paramminer" passHref>
-            <ListItemButton key="paramminer" selected={page === Page.ParamMiner}>
-              <Tooltip title="Parameter discovery">
-                <ListItemIcon>
-                  <TuneIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Param Miner" />
-            </ListItemButton>
-          </Link>
-          <Link href="/graphql" passHref>
-            <ListItemButton key="graphql" selected={page === Page.GraphQL}>
-              <Tooltip title="GraphQL">
-                <ListItemIcon>
-                  <DeviceHubIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="GraphQL" />
-            </ListItemButton>
-          </Link>
-          <Link href="/smuggle" passHref>
-            <ListItemButton key="smuggle" selected={page === Page.Smuggle}>
-              <Tooltip title="Request smuggling probe">
-                <ListItemIcon>
-                  <CallSplitIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Smuggle" />
-            </ListItemButton>
-          </Link>
-          <Link href="/websocket" passHref>
-            <ListItemButton key="websocket" selected={page === Page.WebSocket}>
-              <Tooltip title="WebSocket history">
-                <ListItemIcon>
-                  <SwapHorizIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="WebSockets" />
-            </ListItemButton>
-          </Link>
+          {!focus && (
+            <>
+              <Link href="/scanner" passHref>
+                <ListItemButton key="scanner" disabled={!activeProject} selected={page === Page.Scanner}>
+                  <Tooltip title="Scanner">
+                    <ListItemIcon>
+                      <BugReportIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Scanner" />
+                </ListItemButton>
+              </Link>
+              <Link href="/spider" passHref>
+                <ListItemButton key="spider" selected={page === Page.Spider}>
+                  <Tooltip title="Spider">
+                    <ListItemIcon>
+                      <TravelExploreIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Spider" />
+                </ListItemButton>
+              </Link>
+              <Link href="/intruder" passHref>
+                <ListItemButton key="intruder" selected={page === Page.Intruder}>
+                  <Tooltip title="Intruder">
+                    <ListItemIcon>
+                      <BoltIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Intruder" />
+                </ListItemButton>
+              </Link>
+              <Link href="/decoder" passHref>
+                <ListItemButton key="decoder" selected={page === Page.Decoder}>
+                  <Tooltip title="Decoder">
+                    <ListItemIcon>
+                      <TransformIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Decoder" />
+                </ListItemButton>
+              </Link>
+              <Link href="/comparer" passHref>
+                <ListItemButton key="comparer" selected={page === Page.Comparer}>
+                  <Tooltip title="Comparer">
+                    <ListItemIcon>
+                      <CompareArrowsIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Comparer" />
+                </ListItemButton>
+              </Link>
+              <Link href="/sequencer" passHref>
+                <ListItemButton key="sequencer" selected={page === Page.Sequencer}>
+                  <Tooltip title="Sequencer">
+                    <ListItemIcon>
+                      <CasinoIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Sequencer" />
+                </ListItemButton>
+              </Link>
+              <Link href="/rules" passHref>
+                <ListItemButton key="rules" selected={page === Page.Rules}>
+                  <Tooltip title="Match & Replace">
+                    <ListItemIcon>
+                      <FindReplaceIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Match & Replace" />
+                </ListItemButton>
+              </Link>
+              <Link href="/extensions" passHref>
+                <ListItemButton key="extensions" selected={page === Page.Extensions}>
+                  <Tooltip title="Extensions">
+                    <ListItemIcon>
+                      <ExtensionIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Extensions" />
+                </ListItemButton>
+              </Link>
+              <Link href="/collab" passHref>
+                <ListItemButton key="collab" selected={page === Page.Collab}>
+                  <Tooltip title="Collaborator">
+                    <ListItemIcon>
+                      <SettingsInputAntennaIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Collaborator" />
+                </ListItemButton>
+              </Link>
+              <Link href="/authz" passHref>
+                <ListItemButton key="authz" selected={page === Page.Authz}>
+                  <Tooltip title="Authorization tester">
+                    <ListItemIcon>
+                      <HttpsIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Authz" />
+                </ListItemButton>
+              </Link>
+              <Link href="/sessions" passHref>
+                <ListItemButton key="sessions" selected={page === Page.Sessions}>
+                  <Tooltip title="Auth profiles">
+                    <ListItemIcon>
+                      <PeopleIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Auth Profiles" />
+                </ListItemButton>
+              </Link>
+              <Link href="/discovery" passHref>
+                <ListItemButton key="discovery" selected={page === Page.Discovery}>
+                  <Tooltip title="Content discovery">
+                    <ListItemIcon>
+                      <FindInPageIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Discovery" />
+                </ListItemButton>
+              </Link>
+              <Link href="/sitemap" passHref>
+                <ListItemButton key="sitemap" selected={page === Page.Sitemap}>
+                  <Tooltip title="Site map">
+                    <ListItemIcon>
+                      <AccountTreeIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Site Map" />
+                </ListItemButton>
+              </Link>
+              <Link href="/jwt" passHref>
+                <ListItemButton key="jwt" selected={page === Page.Jwt}>
+                  <Tooltip title="JWT editor">
+                    <ListItemIcon>
+                      <VpnKeyIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="JWT" />
+                </ListItemButton>
+              </Link>
+              <Link href="/annotations" passHref>
+                <ListItemButton key="annotations" selected={page === Page.Annotations}>
+                  <Tooltip title="Annotations">
+                    <ListItemIcon>
+                      <LabelIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Annotations" />
+                </ListItemButton>
+              </Link>
+              <Link href="/paramminer" passHref>
+                <ListItemButton key="paramminer" selected={page === Page.ParamMiner}>
+                  <Tooltip title="Parameter discovery">
+                    <ListItemIcon>
+                      <TuneIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Param Miner" />
+                </ListItemButton>
+              </Link>
+              <Link href="/graphql" passHref>
+                <ListItemButton key="graphql" selected={page === Page.GraphQL}>
+                  <Tooltip title="GraphQL">
+                    <ListItemIcon>
+                      <DeviceHubIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="GraphQL" />
+                </ListItemButton>
+              </Link>
+              <Link href="/smuggle" passHref>
+                <ListItemButton key="smuggle" selected={page === Page.Smuggle}>
+                  <Tooltip title="Request smuggling probe">
+                    <ListItemIcon>
+                      <CallSplitIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Smuggle" />
+                </ListItemButton>
+              </Link>
+              <Link href="/websocket" passHref>
+                <ListItemButton key="websocket" selected={page === Page.WebSocket}>
+                  <Tooltip title="WebSocket history">
+                    <ListItemIcon>
+                      <SwapHorizIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="WebSockets" />
+                </ListItemButton>
+              </Link>
+            </>
+          )}
           <Link href="/asm" passHref>
             <ListItemButton key="asm" selected={page === Page.AttackSurface}>
               <Tooltip title="Attack surface (Sn1per-style sweeps)">
@@ -561,6 +600,16 @@ export function Layout({ title, page, children }: Props): JSX.Element {
               <ListItemText primary="Monitoring" />
             </ListItemButton>
           </Link>
+          <Link href="/assets" passHref>
+            <ListItemButton key="assets" selected={page === Page.Assets}>
+              <Tooltip title="Assets — unified graph of everything found">
+                <ListItemIcon>
+                  <HubIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Assets" />
+            </ListItemButton>
+          </Link>
           <Link href="/storage" passHref>
             <ListItemButton key="storage" selected={page === Page.Storage}>
               <Tooltip title="Save destinations (local / network / S3 / Azure / Drive / Box)">
@@ -581,56 +630,60 @@ export function Layout({ title, page, children }: Props): JSX.Element {
               <ListItemText primary="Guide" />
             </ListItemButton>
           </Link>
-          <Link href="/templates" passHref>
-            <ListItemButton key="templates" selected={page === Page.Templates}>
-              <Tooltip title="Templated scanner">
-                <ListItemIcon>
-                  <RuleIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Templates" />
-            </ListItemButton>
-          </Link>
-          <Link href="/macros" passHref>
-            <ListItemButton key="macros" selected={page === Page.Macros}>
-              <Tooltip title="Session macros">
-                <ListItemIcon>
-                  <LoginIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="Macros" />
-            </ListItemButton>
-          </Link>
-          <Link href="/wsrepeater" passHref>
-            <ListItemButton key="wsrepeater" selected={page === Page.WSRepeater}>
-              <Tooltip title="WebSocket repeater">
-                <ListItemIcon>
-                  <SyncAltIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="WS Repeater" />
-            </ListItemButton>
-          </Link>
-          <Link href="/poc" passHref>
-            <ListItemButton key="poc" selected={page === Page.PoC}>
-              <Tooltip title="PoC generators (CSRF / clickjacking)">
-                <ListItemIcon>
-                  <BugReportIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="PoC Generators" />
-            </ListItemButton>
-          </Link>
-          <Link href="/ai" passHref>
-            <ListItemButton key="ai" selected={page === Page.AIAnalyst}>
-              <Tooltip title="AI analyst">
-                <ListItemIcon>
-                  <AutoAwesomeIcon />
-                </ListItemIcon>
-              </Tooltip>
-              <ListItemText primary="AI Analyst" />
-            </ListItemButton>
-          </Link>
+          {!focus && (
+            <>
+              <Link href="/templates" passHref>
+                <ListItemButton key="templates" selected={page === Page.Templates}>
+                  <Tooltip title="Templated scanner">
+                    <ListItemIcon>
+                      <RuleIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Templates" />
+                </ListItemButton>
+              </Link>
+              <Link href="/macros" passHref>
+                <ListItemButton key="macros" selected={page === Page.Macros}>
+                  <Tooltip title="Session macros">
+                    <ListItemIcon>
+                      <LoginIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="Macros" />
+                </ListItemButton>
+              </Link>
+              <Link href="/wsrepeater" passHref>
+                <ListItemButton key="wsrepeater" selected={page === Page.WSRepeater}>
+                  <Tooltip title="WebSocket repeater">
+                    <ListItemIcon>
+                      <SyncAltIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="WS Repeater" />
+                </ListItemButton>
+              </Link>
+              <Link href="/poc" passHref>
+                <ListItemButton key="poc" selected={page === Page.PoC}>
+                  <Tooltip title="PoC generators (CSRF / clickjacking)">
+                    <ListItemIcon>
+                      <BugReportIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="PoC Generators" />
+                </ListItemButton>
+              </Link>
+              <Link href="/ai" passHref>
+                <ListItemButton key="ai" selected={page === Page.AIAnalyst}>
+                  <Tooltip title="AI analyst">
+                    <ListItemIcon>
+                      <AutoAwesomeIcon />
+                    </ListItemIcon>
+                  </Tooltip>
+                  <ListItemText primary="AI Analyst" />
+                </ListItemButton>
+              </Link>
+            </>
+          )}
           <Divider />
           <Link href="/projects" passHref>
             <ListItemButton key="projects" selected={page === Page.Projects}>

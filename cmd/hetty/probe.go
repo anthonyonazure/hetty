@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/dstotijn/hetty/pkg/assetgraph"
 	"github.com/dstotijn/hetty/pkg/exttool"
 	"github.com/dstotijn/hetty/pkg/monitor"
 	"github.com/dstotijn/hetty/pkg/portscan"
@@ -30,7 +32,10 @@ type platform struct {
 	tmpl      *template.Engine
 	templates []*template.Template
 	exttools  *exttool.Runner
+	graph     *assetgraph.Graph
 }
+
+func nowTS() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // probe runs a monitor schedule's check and returns the normalized item set used
 // for diffing. Kinds: subdomains, portscan, fingerprint, tlsscan, wafdetect, and
@@ -40,6 +45,7 @@ func (p *platform) probe(s monitor.Schedule) ([]string, error) {
 	host := bareHost(s.Target)
 	url := ensureURL(s.Target)
 
+	now := nowTS()
 	switch {
 	case s.Kind == "subdomains":
 		res, err := p.recon.EnumerateSubdomains(ctx, host, recon.Options{Concurrency: 20})
@@ -49,6 +55,9 @@ func (p *platform) probe(s monitor.Schedule) ([]string, error) {
 		var items []string
 		for _, sd := range res.Subdomains {
 			items = append(items, sd.Host)
+			if p.graph != nil {
+				p.graph.IngestSubdomain(host, sd.Host, "monitor", now)
+			}
 		}
 		return dedup(items), nil
 
@@ -60,6 +69,9 @@ func (p *platform) probe(s monitor.Schedule) ([]string, error) {
 		var items []string
 		for _, pt := range res.Open {
 			items = append(items, fmt.Sprintf("port:%d/%s", pt.Port, pt.Service))
+			if p.graph != nil {
+				p.graph.IngestService(host, pt.Port, pt.Service, pt.Banner, "monitor", now)
+			}
 		}
 		return dedup(items), nil
 
@@ -67,6 +79,9 @@ func (p *platform) probe(s monitor.Schedule) ([]string, error) {
 		t, err := p.recon.Fingerprint(ctx, url)
 		if err != nil {
 			return nil, err
+		}
+		if p.graph != nil {
+			p.graph.IngestURL(host, url, t.Technologies, "monitor", now)
 		}
 		return dedup(prefixed("tech:", t.Technologies)), nil
 

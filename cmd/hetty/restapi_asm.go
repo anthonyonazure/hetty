@@ -31,6 +31,12 @@ func (a *restAPI) handlePortScan(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if a.graph != nil {
+		now := nowTS()
+		for _, p := range res.Open {
+			a.graph.IngestService(res.Host, p.Port, p.Service, p.Banner, "portscan", now)
+		}
+	}
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -230,6 +236,27 @@ func (a *restAPI) handleASMRun(w http.ResponseWriter, r *http.Request) {
 	summary := a.asmEngine.Run(r.Context(), ws, mode, body.Options)
 	ws.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	a.asmStore.Save(ws)
+
+	if a.graph != nil {
+		now := nowTS()
+		for _, sub := range ws.Subdomains {
+			for _, t := range ws.Targets {
+				a.graph.IngestSubdomain(bareHost(t), sub, "asm", now)
+			}
+		}
+		for _, h := range ws.Hosts {
+			a.graph.IngestHost(h.Host, "asm", now)
+			for _, p := range h.Ports {
+				a.graph.IngestService(h.Host, p.Port, p.Service, p.Banner, "asm", now)
+			}
+			if h.Tech != nil {
+				a.graph.IngestURL(h.Host, "https://"+h.Host+"/", h.Tech.Technologies, "asm", now)
+			}
+			for _, f := range h.Findings {
+				a.graph.IngestFinding(h.Host, f.Title, f.Severity, "asm", now)
+			}
+		}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"summary": summary, "workspace": ws})
 }

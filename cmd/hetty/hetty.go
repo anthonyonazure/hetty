@@ -28,6 +28,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/annotation"
 	"github.com/dstotijn/hetty/pkg/api"
 	"github.com/dstotijn/hetty/pkg/asm"
+	"github.com/dstotijn/hetty/pkg/assetgraph"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/chrome"
@@ -330,6 +331,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	vaultStore := vault.NewStore()
 	monitorStore := monitor.NewStore()
 	workflowStore := workflow.NewStore()
+	assetGraph := assetgraph.New()
 
 	// AI analyst (optional). Key from flag, falling back to the environment.
 	aiKey := cmd.aiKey
@@ -369,6 +371,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"vault":       vaultStore,
 		"monitor":     monitorStore,
 		"workflows":   workflowStore,
+		"assets":      assetGraph,
 	}
 	restoreStores(boltDB, toolStores, mainLogger)
 	lastFlush := make(map[string][]byte)
@@ -490,9 +493,22 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		tmpl:      tmplEngine,
 		templates: loadedTemplates,
 		exttools:  extToolRunner,
+		graph:     assetGraph,
 	}
 	monitorEngine := monitor.New(monitorStore, plat.probe, sendAlert)
 	workflowEngine := workflow.New(plat.workflowStep)
+
+	// Scheduled runs can snapshot themselves to a saved vault destination.
+	monitorEngine.SetSaver(func(s monitor.Schedule, snapshot []byte) {
+		dest, ok := vaultStore.Get(s.SaveTo)
+		if !ok {
+			return
+		}
+		key := fmt.Sprintf("hetty/monitor/%s/%s.json", s.Name, time.Now().UTC().Format("20060102T150405Z"))
+		if _, err := vault.Save(context.Background(), dest.Config, key, snapshot, "application/json"); err != nil {
+			mainLogger.Warn("Monitor auto-save failed.", zap.Error(err))
+		}
+	})
 
 	schedTicker := time.NewTicker(30 * time.Second)
 	defer schedTicker.Stop()
@@ -541,6 +557,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		monitorEngine: monitorEngine,
 		workflows:   workflowStore,
 		workflowEngine: workflowEngine,
+		graph:       assetGraph,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
@@ -551,7 +568,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"/api/macros", "/api/poc", "/api/wsrepeater", "/api/settings",
 		"/api/portscan", "/api/tlsscan", "/api/wafdetect", "/api/screenshot",
 		"/api/osint", "/api/msf", "/api/asm", "/api/exttools",
-		"/api/vault", "/api/monitor", "/api/workflows",
+		"/api/vault", "/api/monitor", "/api/workflows", "/api/assets",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}

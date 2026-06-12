@@ -49,6 +49,8 @@ export default function Monitoring(): JSX.Element {
   const [extra, setExtra] = useState("");
   const [interval, setInterval] = useState("3600");
   const [alertUrl, setAlertUrl] = useState("");
+  const [saveTo, setSaveTo] = useState("");
+  const [destinations, setDestinations] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [error, setError] = useState("");
   const [diffs, setDiffs] = useState<{ id: string; rows: Diff[] } | null>(null);
@@ -58,7 +60,12 @@ export default function Monitoring(): JSX.Element {
       .then((d) => setSchedules(d.schedules || []))
       .catch(() => undefined);
   };
-  useEffect(refresh, []);
+  useEffect(() => {
+    refresh();
+    apiGet<{ destinations: { name: string }[] | null }>("/api/vault/destinations")
+      .then((d) => setDestinations((d.destinations || []).map((x) => x.name)))
+      .catch(() => undefined);
+  }, []);
 
   const create = () => {
     setError("");
@@ -70,6 +77,7 @@ export default function Monitoring(): JSX.Element {
       extra,
       intervalSec: parseInt(interval, 10) || 3600,
       alertUrl,
+      saveTo,
       enabled,
     })
       .then(() => {
@@ -177,6 +185,23 @@ export default function Monitoring(): JSX.Element {
             sx={{ width: 360 }}
           />
           <TextField size="small" label="Extra args (tools)" value={extra} onChange={(e) => setExtra(e.target.value)} />
+          <TextField
+            select
+            size="small"
+            label="Save runs to"
+            value={saveTo}
+            onChange={(e) => setSaveTo(e.target.value)}
+            sx={{ width: 160 }}
+          >
+            <MenuItem value="">
+              <em>don&apos;t save</em>
+            </MenuItem>
+            {destinations.map((d) => (
+              <MenuItem key={d} value={d}>
+                {d}
+              </MenuItem>
+            ))}
+          </TextField>
           <FormControlLabel
             control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
             label="Enabled"
