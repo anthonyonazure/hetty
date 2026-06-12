@@ -17,6 +17,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/assetgraph"
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/browser"
+	"github.com/dstotijn/hetty/pkg/cluster"
 	"github.com/dstotijn/hetty/pkg/collab"
 	"github.com/dstotijn/hetty/pkg/comparer"
 	"github.com/dstotijn/hetty/pkg/decoder"
@@ -78,6 +79,8 @@ type restAPI struct {
 	workflows   *workflow.Store
 	workflowEngine *workflow.Engine
 	graph       *assetgraph.Graph
+	cluster       *cluster.Store
+	clusterEngine *cluster.Engine
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -161,6 +164,11 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/assets/stats", a.handleAssetsStats).Methods(http.MethodGet)
 	r.HandleFunc("/api/assets/related", a.handleAssetsRelated).Methods(http.MethodGet)
 	r.HandleFunc("/api/assets/interesting", a.handleAssetsInteresting).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/cluster/workers", a.handleClusterList).Methods(http.MethodGet)
+	r.HandleFunc("/api/cluster/workers", a.handleClusterSet).Methods(http.MethodPut)
+	r.HandleFunc("/api/cluster/workers", a.handleClusterDelete).Methods(http.MethodDelete)
+	r.HandleFunc("/api/cluster/run", a.handleClusterRun).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/collab/token", a.handleCollabToken).Methods(http.MethodPost)
 	r.HandleFunc("/api/collab/interactions", a.handleCollabInteractions).Methods(http.MethodGet)

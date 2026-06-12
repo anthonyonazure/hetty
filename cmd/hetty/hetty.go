@@ -32,6 +32,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/authz"
 	"github.com/dstotijn/hetty/pkg/browser"
 	"github.com/dstotijn/hetty/pkg/chrome"
+	"github.com/dstotijn/hetty/pkg/cluster"
 	"github.com/dstotijn/hetty/pkg/collab"
 	"github.com/dstotijn/hetty/pkg/db/bolt"
 	"github.com/dstotijn/hetty/pkg/discovery"
@@ -334,6 +335,8 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	monitorStore := monitor.NewStore()
 	workflowStore := workflow.NewStore()
 	assetGraph := assetgraph.New()
+	clusterStore := cluster.NewStore()
+	clusterEngine := cluster.New()
 
 	// AI analyst (optional). Key from flag, falling back to the environment.
 	aiKey := cmd.aiKey
@@ -374,6 +377,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"monitor":     monitorStore,
 		"workflows":   workflowStore,
 		"assets":      assetGraph,
+		"cluster":     clusterStore,
 	}
 	restoreStores(boltDB, toolStores, mainLogger)
 	lastFlush := make(map[string][]byte)
@@ -571,6 +575,8 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		workflows:   workflowStore,
 		workflowEngine: workflowEngine,
 		graph:       assetGraph,
+		cluster:       clusterStore,
+		clusterEngine: clusterEngine,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
@@ -581,7 +587,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"/api/macros", "/api/poc", "/api/wsrepeater", "/api/settings",
 		"/api/portscan", "/api/tlsscan", "/api/wafdetect", "/api/screenshot",
 		"/api/osint", "/api/msf", "/api/asm", "/api/exttools",
-		"/api/vault", "/api/monitor", "/api/workflows", "/api/assets",
+		"/api/vault", "/api/monitor", "/api/workflows", "/api/assets", "/api/cluster",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}
