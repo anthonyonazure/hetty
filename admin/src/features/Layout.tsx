@@ -26,6 +26,9 @@ import SendIcon from "@mui/icons-material/Send";
 import RuleIcon from "@mui/icons-material/Rule";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
+import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import SyncAltIcon from "@mui/icons-material/SyncAlt";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import TrackChangesIcon from "@mui/icons-material/TrackChanges";
@@ -95,6 +98,10 @@ export enum Page {
   WSRepeater,
   AttackSurface,
   ExternalTools,
+  Monitor,
+  Workflows,
+  Storage,
+  Guide,
 }
 
 const drawerWidth = 240;
@@ -532,6 +539,46 @@ export function Layout({ title, page, children }: Props): JSX.Element {
                 </ListItemIcon>
               </Tooltip>
               <ListItemText primary="External Tools" />
+            </ListItemButton>
+          </Link>
+          <Link href="/workflows" passHref>
+            <ListItemButton key="workflows" selected={page === Page.Workflows}>
+              <Tooltip title="Workflows (chain tools together)">
+                <ListItemIcon>
+                  <AccountTreeIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Workflows" />
+            </ListItemButton>
+          </Link>
+          <Link href="/monitor" passHref>
+            <ListItemButton key="monitor" selected={page === Page.Monitor}>
+              <Tooltip title="Monitoring (scheduled scans + change alerts)">
+                <ListItemIcon>
+                  <MonitorHeartIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Monitoring" />
+            </ListItemButton>
+          </Link>
+          <Link href="/storage" passHref>
+            <ListItemButton key="storage" selected={page === Page.Storage}>
+              <Tooltip title="Save destinations (local / network / S3 / Azure / Drive / Box)">
+                <ListItemIcon>
+                  <CloudUploadIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Save / Storage" />
+            </ListItemButton>
+          </Link>
+          <Link href="/guide" passHref>
+            <ListItemButton key="guide" selected={page === Page.Guide}>
+              <Tooltip title="Guide — what each tool does and how to use them">
+                <ListItemIcon>
+                  <MenuBookIcon />
+                </ListItemIcon>
+              </Tooltip>
+              <ListItemText primary="Guide" />
             </ListItemButton>
           </Link>
           <Link href="/templates" passHref>
