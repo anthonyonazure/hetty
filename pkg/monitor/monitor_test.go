@@ -72,6 +72,34 @@ func TestBaselineThenChangeAndAlert(t *testing.T) {
 	}
 }
 
+func TestSaveToSnapshot(t *testing.T) {
+	store := NewStore()
+	sc, _ := store.Set(&Schedule{Target: "x.com", Kind: "subdomains", IntervalSec: 60, SaveTo: "loot"})
+
+	var saved [][]byte
+	eng := New(store, func(s Schedule) ([]string, error) { return []string{"a", "b"}, nil }, nil)
+	eng.SetSaver(func(s Schedule, snapshot []byte) { saved = append(saved, snapshot) })
+
+	if _, err := eng.RunNow(sc.ID, time.Now()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(saved) != 1 {
+		t.Fatalf("expected 1 saved snapshot, got %d", len(saved))
+	}
+	if !contains(string(saved[0]), "x.com") || !contains(string(saved[0]), "subdomains") {
+		t.Errorf("snapshot missing fields: %s", saved[0])
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func TestTickDueLogic(t *testing.T) {
 	store := NewStore()
 	sc, _ := store.Set(&Schedule{Target: "t", Kind: "portscan", IntervalSec: 300, Enabled: true})

@@ -42,9 +42,15 @@ type Config struct {
 	Container  string `json:"container,omitempty"`
 	AccountKey string `json:"accountKey,omitempty"`
 
-	// gdrive / box (OAuth bearer token + optional parent folder id)
-	Token    string `json:"token,omitempty"`
-	FolderID string `json:"folderId,omitempty"`
+	// gdrive / box (OAuth bearer token + optional parent folder id). When a
+	// RefreshToken (+ClientID/Secret) is supplied, the access token is refreshed
+	// before each upload so long-lived saves keep working after the token expires.
+	Token        string `json:"token,omitempty"`
+	FolderID     string `json:"folderId,omitempty"`
+	RefreshToken string `json:"refreshToken,omitempty"`
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+	TokenURL     string `json:"tokenUrl,omitempty"`
 }
 
 // New builds a backend from a config.
@@ -66,13 +72,13 @@ func New(cfg Config) (Backend, error) {
 		}
 		return newAzure(cfg), nil
 	case "gdrive":
-		if cfg.Token == "" {
-			return nil, fmt.Errorf("vault: gdrive destination needs an OAuth token")
+		if cfg.Token == "" && cfg.RefreshToken == "" {
+			return nil, fmt.Errorf("vault: gdrive destination needs an OAuth token or a refresh token")
 		}
 		return newGDrive(cfg), nil
 	case "box":
-		if cfg.Token == "" {
-			return nil, fmt.Errorf("vault: box destination needs an OAuth token")
+		if cfg.Token == "" && cfg.RefreshToken == "" {
+			return nil, fmt.Errorf("vault: box destination needs an OAuth token or a refresh token")
 		}
 		return newBox(cfg), nil
 	default:
@@ -197,5 +203,7 @@ func redact(d Destination) Destination {
 	d.Config.SecretKey = mask(d.Config.SecretKey)
 	d.Config.AccountKey = mask(d.Config.AccountKey)
 	d.Config.Token = mask(d.Config.Token)
+	d.Config.RefreshToken = mask(d.Config.RefreshToken)
+	d.Config.ClientSecret = mask(d.Config.ClientSecret)
 	return d
 }

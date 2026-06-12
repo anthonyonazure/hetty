@@ -26,6 +26,7 @@ type Schedule struct {
 	IntervalSec int    `json:"intervalSec"`           // timer interval
 	Enabled     bool   `json:"enabled"`
 	AlertURL    string `json:"alertUrl,omitempty"`    // webhook/Slack URL for change alerts
+	SaveTo      string `json:"saveTo,omitempty"`      // vault destination name to snapshot each run to
 	LastRun     string `json:"lastRun,omitempty"`
 	NextRun     string `json:"nextRun,omitempty"`
 }
@@ -46,6 +47,20 @@ type Prober func(s Schedule) ([]string, error)
 
 // AlertFunc delivers a change notification (e.g. POST to a webhook).
 type AlertFunc func(s Schedule, d Diff)
+
+// SaveFunc persists a run's snapshot (e.g. to a vault destination).
+type SaveFunc func(s Schedule, snapshot []byte)
+
+// Snapshot is the JSON payload saved per run when a schedule has SaveTo set.
+type RunSnapshot struct {
+	Schedule string   `json:"schedule"`
+	Target   string   `json:"target"`
+	Kind     string   `json:"kind"`
+	Time     string   `json:"time"`
+	Items    []string `json:"items"`
+	Added    []string `json:"added,omitempty"`
+	Removed  []string `json:"removed,omitempty"`
+}
 
 const maxDiffsPerSchedule = 50
 

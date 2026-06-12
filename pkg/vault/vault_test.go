@@ -120,6 +120,39 @@ func TestBoxBearer(t *testing.T) {
 	}
 }
 
+func TestGDriveOAuthRefresh(t *testing.T) {
+	refreshed := false
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		if r.FormValue("grant_type") == "refresh_token" && r.FormValue("refresh_token") == "rtok" {
+			refreshed = true
+			fmt.Fprint(w, `{"access_token":"fresh-token","expires_in":3600}`)
+			return
+		}
+		w.WriteHeader(400)
+	}))
+	defer tokenSrv.Close()
+
+	uploadSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer fresh-token" {
+			t.Errorf("expected refreshed bearer, got %q", r.Header.Get("Authorization"))
+		}
+		fmt.Fprint(w, `{"id":"file-1","name":"f.txt"}`)
+	}))
+	defer uploadSrv.Close()
+
+	_, err := Save(context.Background(), Config{
+		Kind: "gdrive", Endpoint: uploadSrv.URL,
+		RefreshToken: "rtok", ClientID: "cid", ClientSecret: "sec", TokenURL: tokenSrv.URL,
+	}, "f.txt", []byte("x"), "text/plain")
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if !refreshed {
+		t.Error("expected an OAuth token refresh before upload")
+	}
+}
+
 func TestUnknownKind(t *testing.T) {
 	if _, err := New(Config{Kind: "dropbox"}); err == nil {
 		t.Fatal("expected error for unknown kind")

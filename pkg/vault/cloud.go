@@ -8,8 +8,49 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 )
+
+// oauth carries an OAuth bearer token and, optionally, a refresh-token grant so
+// the access token can be renewed before each upload.
+type oauth struct {
+	token        string
+	refreshToken string
+	clientID     string
+	clientSecret string
+	tokenURL     string
+}
+
+// accessToken returns a usable bearer token, refreshing via the refresh-token
+// grant when one is configured.
+func (o oauth) accessToken() (string, error) {
+	if o.refreshToken == "" || o.clientID == "" {
+		return o.token, nil
+	}
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {o.refreshToken},
+		"client_id":     {o.clientID},
+		"client_secret": {o.clientSecret},
+	}
+	resp, err := httpClient.PostForm(o.tokenURL, form)
+	if err != nil {
+		return "", fmt.Errorf("vault: oauth refresh: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode/100 != 2 {
+		return "", fmt.Errorf("vault: oauth refresh failed: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var r struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil || r.AccessToken == "" {
+		return "", fmt.Errorf("vault: oauth refresh returned no access_token")
+	}
+	return r.AccessToken, nil
+}
 
 // Google Drive and Box backends upload with a user-supplied OAuth bearer token.
 // We use simple (non-resumable) multipart uploads, which suit the report/export
@@ -18,7 +59,7 @@ import (
 // --- Google Drive ----------------------------------------------------------
 
 type gdriveBackend struct {
-	token    string
+	oauth    oauth
 	folderID string
 	endpoint string // overridable in tests
 }
@@ -28,7 +69,15 @@ func newGDrive(cfg Config) *gdriveBackend {
 	if ep == "" {
 		ep = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
 	}
-	return &gdriveBackend{token: cfg.Token, folderID: cfg.FolderID, endpoint: ep}
+	tokenURL := cfg.TokenURL
+	if tokenURL == "" {
+		tokenURL = "https://oauth2.googleapis.com/token"
+	}
+	return &gdriveBackend{
+		oauth:    oauth{token: cfg.Token, refreshToken: cfg.RefreshToken, clientID: cfg.ClientID, clientSecret: cfg.ClientSecret, tokenURL: tokenURL},
+		folderID: cfg.FolderID,
+		endpoint: ep,
+	}
 }
 
 func (b *gdriveBackend) Kind() string { return "gdrive" }
@@ -36,6 +85,10 @@ func (b *gdriveBackend) Kind() string { return "gdrive" }
 func (b *gdriveBackend) Put(ctx context.Context, key string, data []byte, contentType string) (string, error) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
+	}
+	tok, err := b.oauth.accessToken()
+	if err != nil {
+		return "", err
 	}
 	name := key[strings.LastIndex(key, "/")+1:]
 
@@ -47,8 +100,6 @@ func (b *gdriveBackend) Put(ctx context.Context, key string, data []byte, conten
 
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	// Drive expects multipart/related; we approximate with multipart/form-data
-	// part names that the API accepts via the upload endpoint.
 	metaPart, _ := mw.CreatePart(textHeader("application/json; charset=UTF-8"))
 	metaPart.Write(metaJSON)
 	filePart, _ := mw.CreatePart(textHeader(contentType))
@@ -59,7 +110,7 @@ func (b *gdriveBackend) Put(ctx context.Context, key string, data []byte, conten
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+b.token)
+	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", "multipart/related; boundary="+mw.Boundary())
 
 	return doUpload(req, "gdrive")
@@ -72,7 +123,7 @@ func textHeader(contentType string) map[string][]string {
 // --- Box -------------------------------------------------------------------
 
 type boxBackend struct {
-	token    string
+	oauth    oauth
 	folderID string
 	endpoint string
 }
@@ -86,12 +137,24 @@ func newBox(cfg Config) *boxBackend {
 	if folder == "" {
 		folder = "0" // Box root folder
 	}
-	return &boxBackend{token: cfg.Token, folderID: folder, endpoint: ep}
+	tokenURL := cfg.TokenURL
+	if tokenURL == "" {
+		tokenURL = "https://api.box.com/oauth2/token"
+	}
+	return &boxBackend{
+		oauth:    oauth{token: cfg.Token, refreshToken: cfg.RefreshToken, clientID: cfg.ClientID, clientSecret: cfg.ClientSecret, tokenURL: tokenURL},
+		folderID: folder,
+		endpoint: ep,
+	}
 }
 
 func (b *boxBackend) Kind() string { return "box" }
 
 func (b *boxBackend) Put(ctx context.Context, key string, data []byte, contentType string) (string, error) {
+	tok, err := b.oauth.accessToken()
+	if err != nil {
+		return "", err
+	}
 	name := key[strings.LastIndex(key, "/")+1:]
 
 	var body bytes.Buffer
@@ -109,7 +172,7 @@ func (b *boxBackend) Put(ctx context.Context, key string, data []byte, contentTy
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+b.token)
+	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
 	return doUpload(req, "box")

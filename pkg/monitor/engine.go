@@ -1,21 +1,26 @@
 package monitor
 
 import (
+	"encoding/json"
 	"time"
 )
 
 // Engine runs schedules: it executes a probe, diffs against the previous
-// snapshot, records the result, and alerts on change.
+// snapshot, records the result, and alerts/saves on change.
 type Engine struct {
 	store  *Store
 	prober Prober
 	alert  AlertFunc
+	save   SaveFunc
 }
 
 // New returns a monitor engine. alert may be nil.
 func New(store *Store, prober Prober, alert AlertFunc) *Engine {
 	return &Engine{store: store, prober: prober, alert: alert}
 }
+
+// SetSaver installs the per-run snapshot saver (e.g. write to a vault dest).
+func (e *Engine) SetSaver(s SaveFunc) { e.save = s }
 
 // RunNow executes a schedule immediately and returns the diff. The first run of
 // a schedule only establishes a baseline (no alert).
@@ -43,6 +48,16 @@ func (e *Engine) RunNow(id string, now time.Time) (Diff, error) {
 
 	if !firstRun && !d.empty() && sc.AlertURL != "" && e.alert != nil {
 		e.alert(*sc, d)
+	}
+
+	if sc.SaveTo != "" && e.save != nil {
+		snap := RunSnapshot{
+			Schedule: sc.Name, Target: sc.Target, Kind: sc.Kind, Time: d.Time,
+			Items: items, Added: d.Added, Removed: d.Removed,
+		}
+		if blob, err := json.Marshal(snap); err == nil {
+			e.save(*sc, blob)
+		}
 	}
 	return d, nil
 }
