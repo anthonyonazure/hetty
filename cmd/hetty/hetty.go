@@ -115,6 +115,7 @@ type HettyCommand struct {
 	msfUser     string
 	msfPass     string
 	msfInsecure bool
+	authToken   string
 }
 
 func NewHettyCommand() (*ffcli.Command, *Config) {
@@ -145,6 +146,7 @@ func NewHettyCommand() (*ffcli.Command, *Config) {
 	fs.StringVar(&cmd.msfUser, "msf-user", "msf", "Metasploit RPC username.")
 	fs.StringVar(&cmd.msfPass, "msf-pass", "", "Metasploit RPC password.")
 	fs.BoolVar(&cmd.msfInsecure, "msf-insecure", true, "Skip TLS verification for the Metasploit RPC endpoint (self-signed by default).")
+	fs.StringVar(&cmd.authToken, "auth-token", "", "Require this token (HTTP Basic password, Bearer, or X-Hetty-Token) for the admin UI + API. Recommended when binding to a non-localhost address.")
 
 	cmd.config.RegisterFlags(fs)
 
@@ -474,6 +476,15 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 			req.Method != http.MethodConnect && !strings.HasPrefix(req.RequestURI, "http://")
 	}).Subrouter().StrictSlash(true)
 
+	// Optional access control: when --auth-token is set, gate the admin UI and
+	// API (not proxied traffic) behind HTTP Basic auth (password == token) or a
+	// Bearer/X-Hetty-Token header. The pragmatic single-user alternative to RBAC
+	// when Hetty is bound to a network-reachable address.
+	if cmd.authToken != "" {
+		adminRouter.Use(authMiddleware(cmd.authToken))
+		mainLogger.Info("Admin UI + API require an auth token (--auth-token).")
+	}
+
 	// GraphQL server.
 	gqlEndpoint := "/api/graphql/"
 	adminRouter.Path(gqlEndpoint).Handler(api.HTTPHandler(&api.Resolver{
@@ -494,6 +505,8 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		templates: loadedTemplates,
 		exttools:  extToolRunner,
 		graph:     assetGraph,
+		workflows: workflowStore,
+		asm:       asmEngine,
 	}
 	monitorEngine := monitor.New(monitorStore, plat.probe, sendAlert)
 	workflowEngine := workflow.New(plat.workflowStep)

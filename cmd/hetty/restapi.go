@@ -160,6 +160,7 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/assets", a.handleAssetsClear).Methods(http.MethodDelete)
 	r.HandleFunc("/api/assets/stats", a.handleAssetsStats).Methods(http.MethodGet)
 	r.HandleFunc("/api/assets/related", a.handleAssetsRelated).Methods(http.MethodGet)
+	r.HandleFunc("/api/assets/interesting", a.handleAssetsInteresting).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/collab/token", a.handleCollabToken).Methods(http.MethodPost)
 	r.HandleFunc("/api/collab/interactions", a.handleCollabInteractions).Methods(http.MethodGet)

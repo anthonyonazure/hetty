@@ -32,6 +32,14 @@ func (a *restAPI) handleAssetsRelated(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"related": a.graph.Related(key)})
 }
 
+func (a *restAPI) handleAssetsInteresting(w http.ResponseWriter, r *http.Request) {
+	if a.graph == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"interesting": []assetgraph.Interesting{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"interesting": a.graph.Interesting()})
+}
+
 func (a *restAPI) handleAssetsClear(w http.ResponseWriter, r *http.Request) {
 	if a.graph != nil {
 		a.graph.Clear()

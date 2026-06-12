@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dstotijn/hetty/pkg/asm"
 	"github.com/dstotijn/hetty/pkg/assetgraph"
 	"github.com/dstotijn/hetty/pkg/exttool"
 	"github.com/dstotijn/hetty/pkg/monitor"
@@ -24,6 +25,12 @@ import (
 	"github.com/dstotijn/hetty/pkg/workflow"
 )
 
+// asmRunner is the subset of *asm.Engine the prober needs (avoids an import
+// cycle in field ordering; *asm.Engine satisfies it).
+type asmRunner interface {
+	Run(ctx context.Context, ws *asm.Workspace, mode asm.Mode, opts asm.RunOptions) asm.RunSummary
+}
+
 // platform bundles the engines so the monitor prober and workflow step-runner
 // can drive them.
 type platform struct {
@@ -33,6 +40,8 @@ type platform struct {
 	templates []*template.Template
 	exttools  *exttool.Runner
 	graph     *assetgraph.Graph
+	workflows *workflow.Store
+	asm       asmRunner
 }
 
 func nowTS() string { return time.Now().UTC().Format(time.RFC3339) }
@@ -113,6 +122,47 @@ func (p *platform) probe(s monitor.Schedule) ([]string, error) {
 		}
 		return outputLines(out), nil
 
+	case strings.HasPrefix(s.Kind, "workflow:"):
+		if p.workflows == nil {
+			return nil, fmt.Errorf("monitor: workflows unavailable")
+		}
+		wf, ok := p.workflows.Get(strings.TrimPrefix(s.Kind, "workflow:"))
+		if !ok {
+			return nil, fmt.Errorf("monitor: unknown workflow %q", s.Kind)
+		}
+		var items []string
+		for _, step := range wf.Steps {
+			out, _ := p.workflowStep(ctx, s.Target, step)
+			items = append(items, outputLines(out)...)
+		}
+		return dedup(items), nil
+
+	case strings.HasPrefix(s.Kind, "asm:"):
+		if p.asm == nil {
+			return nil, fmt.Errorf("monitor: attack-surface engine unavailable")
+		}
+		ws := &asm.Workspace{Name: "monitor", Targets: []string{s.Target}}
+		p.asm.Run(ctx, ws, asm.Mode(strings.TrimPrefix(s.Kind, "asm:")), asm.RunOptions{})
+		var items []string
+		for _, h := range ws.Hosts {
+			if p.graph != nil {
+				p.graph.IngestHost(h.Host, "monitor", now)
+			}
+			for _, pt := range h.Ports {
+				items = append(items, fmt.Sprintf("%s:port:%d", h.Host, pt.Port))
+				if p.graph != nil {
+					p.graph.IngestService(h.Host, pt.Port, pt.Service, pt.Banner, "monitor", now)
+				}
+			}
+			for _, f := range h.Findings {
+				items = append(items, h.Host+":finding:"+f.Title)
+				if p.graph != nil {
+					p.graph.IngestFinding(h.Host, f.Title, f.Severity, "monitor", now)
+				}
+			}
+		}
+		return dedup(items), nil
+
 	default:
 		return nil, fmt.Errorf("monitor: unsupported kind %q", s.Kind)
 	}
@@ -127,6 +177,7 @@ func (p *platform) workflowStep(ctx context.Context, target string, step workflo
 		return p.exttools.RunSync(ctx, step.Name, target, step.Extra)
 	}
 
+	now := nowTS()
 	// native steps
 	switch step.Name {
 	case "subdomains":
@@ -137,6 +188,9 @@ func (p *platform) workflowStep(ctx context.Context, target string, step workflo
 		var b strings.Builder
 		for _, sd := range res.Subdomains {
 			fmt.Fprintf(&b, "%s\n", sd.Host)
+			if p.graph != nil {
+				p.graph.IngestSubdomain(host, sd.Host, "workflow", now)
+			}
 		}
 		return b.String(), nil
 	case "portscan":
@@ -147,12 +201,18 @@ func (p *platform) workflowStep(ctx context.Context, target string, step workflo
 		var b strings.Builder
 		for _, pt := range res.Open {
 			fmt.Fprintf(&b, "%d/%s %s\n", pt.Port, pt.Service, pt.Banner)
+			if p.graph != nil {
+				p.graph.IngestService(host, pt.Port, pt.Service, pt.Banner, "workflow", now)
+			}
 		}
 		return b.String(), nil
 	case "fingerprint":
 		t, err := p.recon.Fingerprint(ctx, url)
 		if err != nil {
 			return "", err
+		}
+		if p.graph != nil {
+			p.graph.IngestURL(host, url, t.Technologies, "workflow", now)
 		}
 		return fmt.Sprintf("%s — server=%s tech=%s", t.Title, t.Server, strings.Join(t.Technologies, ", ")), nil
 	case "tlsscan":
