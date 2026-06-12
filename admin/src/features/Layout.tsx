@@ -53,7 +53,7 @@ import MuiDrawer from "@mui/material/Drawer";
 import MuiListItemButton, { ListItemButtonProps } from "@mui/material/ListItemButton";
 import MuiListItemIcon, { ListItemIconProps } from "@mui/material/ListItemIcon";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import { useActiveProject } from "lib/ActiveProjectContext";
 import { useInterceptedRequests } from "lib/InterceptedRequestsContext";
@@ -196,6 +196,16 @@ export function Layout({ title, page, children }: Props): JSX.Element {
   const interceptedRequests = useInterceptedRequests();
   const theme = useTheme();
   const [open, setOpen] = useState(false);
+  const navRef = useRef<HTMLUListElement>(null);
+
+  // After navigating, keep the active sidebar item in view instead of resetting
+  // the scroll to the top (which hid items below the fold).
+  useEffect(() => {
+    const selected = navRef.current?.querySelector(".Mui-selected");
+    if (selected) {
+      selected.scrollIntoView({ block: "center" });
+    }
+  }, [page]);
 
   const handleDrawerOpen = () => {
     setOpen(true);
@@ -250,7 +260,7 @@ export function Layout({ title, page, children }: Props): JSX.Element {
           </IconButton>
         </DrawerHeader>
         <Divider />
-        <List sx={{ p: 0 }}>
+        <List ref={navRef} sx={{ p: 0, flex: 1, overflowY: "auto", overflowX: "hidden" }}>
           <Link href="/" passHref>
             <ListItemButton key="home" selected={page === Page.Home}>
               <Tooltip title="Home">
