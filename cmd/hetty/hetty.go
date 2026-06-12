@@ -37,6 +37,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/ext"
 	"github.com/dstotijn/hetty/pkg/exttool"
 	"github.com/dstotijn/hetty/pkg/intruder"
+	"github.com/dstotijn/hetty/pkg/monitor"
 	"github.com/dstotijn/hetty/pkg/msf"
 	"github.com/dstotijn/hetty/pkg/osint"
 	"github.com/dstotijn/hetty/pkg/paramminer"
@@ -55,6 +56,8 @@ import (
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
 	"github.com/dstotijn/hetty/pkg/template"
+	"github.com/dstotijn/hetty/pkg/vault"
+	"github.com/dstotijn/hetty/pkg/workflow"
 	"github.com/dstotijn/hetty/pkg/wslog"
 )
 
@@ -322,6 +325,12 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	asmStore := asm.NewStore()
 	extToolRunner := exttool.NewRunner(exttool.DefaultCatalog(), 0)
 
+	// Save destinations, monitoring schedules, and workflows (engines built below
+	// once the template engine is available).
+	vaultStore := vault.NewStore()
+	monitorStore := monitor.NewStore()
+	workflowStore := workflow.NewStore()
+
 	// AI analyst (optional). Key from flag, falling back to the environment.
 	aiKey := cmd.aiKey
 	if aiKey == "" {
@@ -357,6 +366,9 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"ext":         extStore,
 		"macros":      macroStore,
 		"asm":         asmStore,
+		"vault":       vaultStore,
+		"monitor":     monitorStore,
+		"workflows":   workflowStore,
 	}
 	restoreStores(boltDB, toolStores, mainLogger)
 	lastFlush := make(map[string][]byte)
@@ -471,6 +483,30 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 	// Scan-mode orchestrator binds the recon/scan/template/MSF engines.
 	asmEngine := asm.New(newASMToolbox(reconEngine, scanService, tmplEngine, loadedTemplates, msfClient))
 
+	// Monitor + workflow engines + the background scheduler.
+	plat := &platform{
+		recon:     reconEngine,
+		scan:      scanService,
+		tmpl:      tmplEngine,
+		templates: loadedTemplates,
+		exttools:  extToolRunner,
+	}
+	monitorEngine := monitor.New(monitorStore, plat.probe, sendAlert)
+	workflowEngine := workflow.New(plat.workflowStep)
+
+	schedTicker := time.NewTicker(30 * time.Second)
+	defer schedTicker.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-schedTicker.C:
+				monitorEngine.Tick(time.Now())
+			}
+		}
+	}()
+
 	// REST API for the new tooling.
 	toolsAPI := (&restAPI{
 		scanner:     scanService,
@@ -500,6 +536,11 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		shodan:      shodanClient,
 		msf:         msfClient,
 		exttools:    extToolRunner,
+		vault:       vaultStore,
+		monitor:     monitorStore,
+		monitorEngine: monitorEngine,
+		workflows:   workflowStore,
+		workflowEngine: workflowEngine,
 	}).Handler()
 	for _, prefix := range []string{
 		"/api/scanner", "/api/intruder", "/api/decoder", "/api/comparer",
@@ -510,6 +551,7 @@ func (cmd *HettyCommand) Exec(ctx context.Context, _ []string) error {
 		"/api/macros", "/api/poc", "/api/wsrepeater", "/api/settings",
 		"/api/portscan", "/api/tlsscan", "/api/wafdetect", "/api/screenshot",
 		"/api/osint", "/api/msf", "/api/asm", "/api/exttools",
+		"/api/vault", "/api/monitor", "/api/workflows",
 	} {
 		adminRouter.PathPrefix(prefix).Handler(toolsAPI)
 	}

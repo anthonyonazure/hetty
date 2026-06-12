@@ -23,6 +23,7 @@ import (
 	"github.com/dstotijn/hetty/pkg/ext"
 	"github.com/dstotijn/hetty/pkg/exttool"
 	"github.com/dstotijn/hetty/pkg/intruder"
+	"github.com/dstotijn/hetty/pkg/monitor"
 	"github.com/dstotijn/hetty/pkg/msf"
 	"github.com/dstotijn/hetty/pkg/osint"
 	"github.com/dstotijn/hetty/pkg/paramminer"
@@ -37,6 +38,8 @@ import (
 	"github.com/dstotijn/hetty/pkg/sitemap"
 	"github.com/dstotijn/hetty/pkg/spider"
 	"github.com/dstotijn/hetty/pkg/template"
+	"github.com/dstotijn/hetty/pkg/vault"
+	"github.com/dstotijn/hetty/pkg/workflow"
 	"github.com/dstotijn/hetty/pkg/wslog"
 )
 
@@ -68,6 +71,11 @@ type restAPI struct {
 	shodan      *osint.Client
 	msf         *msf.Client
 	exttools    *exttool.Runner
+	vault       *vault.Store
+	monitor     *monitor.Store
+	monitorEngine *monitor.Engine
+	workflows   *workflow.Store
+	workflowEngine *workflow.Engine
 }
 
 func (a *restAPI) Handler() http.Handler {
@@ -129,6 +137,22 @@ func (a *restAPI) Handler() http.Handler {
 	r.HandleFunc("/api/exttools/run", a.handleExtToolRun).Methods(http.MethodPost)
 	r.HandleFunc("/api/exttools/job", a.handleExtToolJob).Methods(http.MethodGet)
 	r.HandleFunc("/api/exttools/stop", a.handleExtToolStop).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/vault/destinations", a.handleVaultList).Methods(http.MethodGet)
+	r.HandleFunc("/api/vault/destinations", a.handleVaultSet).Methods(http.MethodPut)
+	r.HandleFunc("/api/vault/destinations", a.handleVaultDelete).Methods(http.MethodDelete)
+	r.HandleFunc("/api/vault/save", a.handleVaultSave).Methods(http.MethodPost)
+
+	r.HandleFunc("/api/monitor/schedules", a.handleMonitorList).Methods(http.MethodGet)
+	r.HandleFunc("/api/monitor/schedules", a.handleMonitorSet).Methods(http.MethodPut)
+	r.HandleFunc("/api/monitor/schedules", a.handleMonitorDelete).Methods(http.MethodDelete)
+	r.HandleFunc("/api/monitor/run", a.handleMonitorRun).Methods(http.MethodPost)
+	r.HandleFunc("/api/monitor/diffs", a.handleMonitorDiffs).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/workflows", a.handleWorkflowList).Methods(http.MethodGet)
+	r.HandleFunc("/api/workflows", a.handleWorkflowSet).Methods(http.MethodPut)
+	r.HandleFunc("/api/workflows", a.handleWorkflowDelete).Methods(http.MethodDelete)
+	r.HandleFunc("/api/workflows/run", a.handleWorkflowRun).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/collab/token", a.handleCollabToken).Methods(http.MethodPost)
 	r.HandleFunc("/api/collab/interactions", a.handleCollabInteractions).Methods(http.MethodGet)

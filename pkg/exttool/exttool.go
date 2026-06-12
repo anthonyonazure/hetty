@@ -233,6 +233,26 @@ func (r *Runner) Start(parent context.Context, toolName, target, extra string) (
 	return job, nil
 }
 
+// RunSync runs a tool and blocks until it finishes, returning combined output.
+// Used by the workflow and monitor engines, which need the result inline.
+func (r *Runner) RunSync(parent context.Context, toolName, target, extra string) (string, error) {
+	tool, ok := r.catalog.Get(toolName)
+	if !ok {
+		return "", fmt.Errorf("exttool: unknown tool %q", toolName)
+	}
+	if tool.NeedsTarget && strings.TrimSpace(target) == "" {
+		return "", fmt.Errorf("exttool: %s requires a target", toolName)
+	}
+	path, ok := lookPath(tool.Binary)
+	if !ok {
+		return "", fmt.Errorf("exttool: %q is not installed", toolName)
+	}
+	ctx, cancel := context.WithTimeout(parent, r.timeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, buildArgs(tool, target, extra)...).CombinedOutput()
+	return string(out), err
+}
+
 // Job returns a job by id.
 func (r *Runner) Job(id string) (*Job, bool) {
 	r.mu.Lock()
