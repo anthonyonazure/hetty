@@ -169,12 +169,16 @@ export default function Guide(): JSX.Element {
       ))}
 
       <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
-        Tip: this whole platform draws on ideas from{" "}
+        How this maps to tools you may know:{" "}
         <MuiLink href="https://github.com/projectdiscovery" target="_blank" rel="noreferrer">
           ProjectDiscovery
-        </MuiLink>
-        , reNgine, Osmedeus and Sn1per — if you install their CLI tools, they light up under External Tools and in
-        Workflows automatically.
+        </MuiLink>{" "}
+        ships individual CLI tools (subfinder, httpx, naabu, nuclei, katana…) — install the binary and it plugs straight
+        into External Tools and Workflows.{" "}
+        <strong>Sn1per, reNgine and Osmedeus are platforms/orchestrators, not CLI tools</strong>; Hetty reimplements
+        their core capabilities natively — scan modes, workflows, scheduled monitoring with change alerts, the asset
+        inventory, screenshots and AI reports — rather than bundling their code. So you get their features built-in, not
+        their binaries.
       </Typography>
     </Box>
   );
