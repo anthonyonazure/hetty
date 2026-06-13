@@ -310,15 +310,16 @@ from source.
 
 Requirements: Go 1.25+ and Node/Yarn (to build the embedded admin frontend).
 
-All the tooling above lives on the **`pentest-tooling`** branch (the default
-`main` branch tracks vanilla upstream Hetty), so check that branch out:
-
 ```sh
-git clone -b pentest-tooling https://github.com/anthonyonazure/hetty.git
+git clone https://github.com/anthonyonazure/hetty.git
 cd hetty
 make build          # builds the admin UI, embeds it, then `go build ./cmd/hetty`
 ./hetty             # run it
 ```
+
+The default branch carries the full fork (everything documented above), so a
+plain clone or a GitHub fork gets all of it. The `pentest-tooling` branch is the
+development branch and mirrors the same work.
 
 `make build` runs `yarn install && yarn run export` in `admin/`, moves the static
 export into `cmd/hetty/admin`, and compiles a single self-contained binary
