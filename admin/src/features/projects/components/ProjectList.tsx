@@ -30,7 +30,7 @@ import React, { useState } from "react";
 
 import useOpenProjectMutation from "../hooks/useOpenProjectMutation";
 
-import Link, { NextLinkComposed } from "lib/components/Link";
+import Link from "lib/components/Link";
 import {
   ProjectsQuery,
   useCloseProjectMutation,
