@@ -12,6 +12,10 @@ import { useApollo } from "lib/graphql/useApollo";
 import createEmotionCache from "lib/mui/createEmotionCache";
 import theme from "lib/mui/theme";
 
+// Allotment ships its own stylesheet and Next only allows importing CSS from
+// node_modules here, in the custom App.
+import "allotment/dist/style.css";
+
 import "../styles.css";
 
 // Client-side cache, shared for the whole session of the user in the browser.
