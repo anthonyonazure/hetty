@@ -27,7 +27,9 @@ function Actions(): JSX.Element {
         All proxy logs are going to be removed. This action cannot be undone.
       </ConfirmationDialog>
 
-      {clearLogsResult.error && <Alert severity="error">Failed to clear HTTP logs: {clearLogsResult.error}</Alert>}
+      {clearLogsResult.error && (
+        <Alert severity="error">Failed to clear HTTP logs: {clearLogsResult.error.message}</Alert>
+      )}
 
       {(activeProject?.settings.intercept.requestsEnabled || activeProject?.settings.intercept.responsesEnabled) && (
         <Link href="/proxy/intercept/?id=" passHref>
