@@ -8,9 +8,9 @@ jobs:
     runs-on: ubuntu-latest
     name: Admin (Next.js)
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "16"
-      - run: yarn install
+          node-version: "18"
+      - run: yarn install --frozen-lockfile
       - run: yarn run lint
