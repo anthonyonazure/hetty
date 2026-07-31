@@ -3,6 +3,10 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  # Re-check on a clock. Code that has not changed can still break when a
+  # dependency publishes a security release or an action is deprecated.
+  schedule:
+    - cron: "17 6 * * 1"
 defaults:
   run:
     working-directory: ./admin

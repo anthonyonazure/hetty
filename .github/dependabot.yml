@@ -1,0 +1,26 @@
+# Keeps the dependency tree from silently rotting between manual audits.
+# The admin lockfile sat four years stale before an osv-scanner run found
+# 45 vulnerable packages in it; weekly PRs make that visible as it happens.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /admin
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # One PR per week for routine bumps, so security PRs stand out.
+      admin-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
