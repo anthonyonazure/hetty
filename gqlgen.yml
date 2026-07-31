@@ -17,12 +17,22 @@ model:
   filename: pkg/api/models_gen.go
   package: api
 
-# Where should the resolver implementations go?
-resolver:
-  layout: single-file
-  filename: pkg/api/resolvers.go
-  dir: pkg/api
-  package: api
+# There is deliberately no `resolver:` section.
+#
+# pkg/api/resolvers.go is hand-maintained. It holds more than resolver
+# methods: the Resolver struct and its four service dependencies, the HTTP
+# protocol lookup maps, and the parse* helpers that convert domain types into
+# API types. The resolver generator owns whichever file it writes to. Pointed
+# at resolvers.go it emits `type Resolver struct{}` with no fields, moves every
+# hand-written declaration into a trailing comment block, and the package stops
+# compiling. It preserves the resolver method bodies; it does not preserve
+# anything else in the file.
+#
+# So generation covers the exec layer and the models only, and resolvers.go is
+# treated as source rather than scaffolding. When the schema gains a field,
+# `go generate ./...` regenerates generated.go, the build then fails on the
+# missing resolver method, and it gets written by hand. That is a loud failure
+# at build time, which is the behaviour worth having.
 
 # Optional: turn on use `gqlgen:"fieldName"` tags in your models
 # struct_tag: json
