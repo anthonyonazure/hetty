@@ -2,8 +2,8 @@ package intercept_test
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -17,8 +17,9 @@ import (
 	"github.com/dstotijn/hetty/pkg/proxy/intercept"
 )
 
-//nolint:gosec
-var ulidEntropy = rand.New(rand.NewSource(time.Now().UnixNano()))
+// crypto/rand.Reader is safe for concurrent use. A shared *math/rand.Rand is
+// not, and these subtests run in parallel, which made the suite flaky.
+var ulidEntropy = rand.Reader
 
 func TestRequestModifier(t *testing.T) {
 	t.Parallel()

@@ -2,9 +2,9 @@ package sender_test
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,8 +22,9 @@ import (
 	"github.com/dstotijn/hetty/pkg/sender"
 )
 
-//nolint:gosec
-var ulidEntropy = rand.New(rand.NewSource(time.Now().UnixNano()))
+// crypto/rand.Reader is safe for concurrent use. A shared *math/rand.Rand is
+// not, and these subtests run in parallel, which made the suite flaky.
+var ulidEntropy = rand.Reader
 
 var exampleURL = func() *url.URL {
 	u, err := url.Parse("https://example.com/foobar")
